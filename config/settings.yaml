@@ -1,0 +1,14 @@
+app:
+  title: LiveSense
+  tagline: Real-time Human Signal Intelligence
+  page_icon: "◉"
+
+camera:
+  width: 1280
+  height: 720
+  target_fps: 30
+  mirrored: true
+  show_fps: true
+
+privacy:
+  persist_frames: false
