@@ -40,8 +40,8 @@ class PrivacySettings:
 
 @dataclass(frozen=True, slots=True)
 class MonitoringSettings:
-    dozing_seconds: float = 1.5
-    sleeping_seconds: float = 4.0
+    dozing_seconds: float = 1.1
+    sleeping_seconds: float = 3.0
 
     def __post_init__(self) -> None:
         if self.dozing_seconds <= 0:

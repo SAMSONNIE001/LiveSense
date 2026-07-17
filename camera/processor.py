@@ -38,8 +38,8 @@ class CameraProcessor:
         privacy_blur: bool = False,
         enable_landmarks: bool = True,
         enable_phone_detection: bool = True,
-        dozing_seconds: float = 1.5,
-        sleeping_seconds: float = 4.0,
+        dozing_seconds: float = 1.1,
+        sleeping_seconds: float = 3.0,
     ) -> None:
         self._mirrored = mirrored
         self._show_fps = show_fps

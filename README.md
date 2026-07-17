@@ -40,8 +40,8 @@ operating-system browser notifications. Camera permission requires `localhost`
 or an HTTPS deployment. LiveSense does not request microphone access.
 
 Sleep timing can be adjusted in `config/settings.yaml`. The default begins a
-dozing warning after 1.5 seconds of sustained closure and activates the sleep
-alarm after 4 seconds.
+yellow dozing warning after 1.1 seconds of sustained closure and activates the
+red sleep alarm after 3 seconds.
 
 ## Test
 

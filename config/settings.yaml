@@ -14,5 +14,5 @@ privacy:
   persist_frames: false
 
 monitoring:
-  dozing_seconds: 1.5
-  sleeping_seconds: 4.0
+  dozing_seconds: 1.1
+  sleeping_seconds: 3.0

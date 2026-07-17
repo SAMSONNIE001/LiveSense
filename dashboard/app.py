@@ -140,8 +140,8 @@ def _render_local_camera_preview(active: bool) -> None:
         </div>
         <style>
           #livesense-preview-shell {
-            position: relative; width: 100%; height: 420px; overflow: hidden;
-            border-radius: 4px; background: #17201e;
+            position: relative; width: 100%; overflow: hidden;
+            border-radius: 4px; background: #17201e; aspect-ratio: 16 / 9;
           }
           #livesense-preview {
             display: block; width: 100%; height: 100%; object-fit: cover;
@@ -182,7 +182,7 @@ def _render_local_camera_preview(active: bool) -> None:
         """
     components.html(
         preview_html.replace("__LIVESENSE_ACTIVE__", "true" if active else "false"),
-        height=430,
+        height=260,
         scrolling=False,
     )
 
@@ -308,11 +308,14 @@ def _render_status_banner() -> None:
         )
         return
     if current.sleep_state in {"Dozing", "Drowsy"}:
+        warning_title = (
+            "DOZING WARNING" if current.sleep_state == "Dozing" else "DROWSINESS WARNING"
+        )
         st.markdown(
-            """
+            f"""
             <div class="notice-banner notice-warning">
               <span class="notice-icon">!</span>
-              <div><strong>DROWSINESS WARNING</strong><br>
+              <div><strong>{warning_title}</strong><br>
               Pull over at the next safe place and take a break.</div>
             </div>
             """,
@@ -584,50 +587,60 @@ def render_dashboard() -> None:
     )
     _render_status_banner()
 
-    with st.container(border=True):
-        st.markdown(
-            '<div class="panel-head"><span class="panel-title">Live Camera Feed</span>'
-            '<span class="live-label"><span class="live-dot"></span>Live</span></div>',
-            unsafe_allow_html=True,
-        )
-        _render_local_camera_preview(st.session_state.camera_requested)
-        context = webrtc_streamer(
-            key="livesense-camera",
-            mode=WebRtcMode.SENDONLY,
-            desired_playing_state=st.session_state.camera_requested,
-            video_processor_factory=lambda: CameraProcessor(
-                mirrored=settings.camera.mirrored,
-                show_fps=settings.camera.show_fps,
-                privacy_blur=False,
-                dozing_seconds=settings.monitoring.dozing_seconds,
-                sleeping_seconds=settings.monitoring.sleeping_seconds,
-            ),
-            audio_processor_factory=None,
-            media_stream_constraints={
-                "video": {
-                    "width": {"ideal": settings.camera.width},
-                    "height": {"ideal": settings.camera.height},
-                    "frameRate": {"ideal": settings.camera.target_fps},
-                },
-                "audio": False,
-            },
-            video_html_attrs={"autoPlay": True, "controls": False, "muted": True},
-            media_toggle_controls=False,
-            video_receiver_size=1,
-            sendback_audio=False,
-            async_processing=True,
-        )
-        if context.video_processor:
-            processor = context.video_processor
-            st.session_state.live_processor = processor
-            processor.configure(
-                mirrored=settings.camera.mirrored,
-                show_fps=settings.camera.show_fps,
-                privacy_blur=False,
+    camera_column, metrics_column, events_column = st.columns([1.4, 1.18, 0.86], gap="small")
+    with camera_column:
+        with st.container(border=True):
+            st.markdown(
+                '<div class="panel-head"><span class="panel-title">Live Camera Feed</span>'
+                '<span class="live-label"><span class="live-dot"></span>Live</span></div>',
+                unsafe_allow_html=True,
             )
-            if st.session_state.calibration_requested:
-                processor.start_calibration(10.0)
-                st.session_state.calibration_requested = False
-            if st.session_state.reset_requested:
-                processor.reset_session()
-                st.session_state.reset_requested = False
+            _render_local_camera_preview(st.session_state.camera_requested)
+            context = webrtc_streamer(
+                key="livesense-camera",
+                mode=WebRtcMode.SENDONLY,
+                desired_playing_state=st.session_state.camera_requested,
+                video_processor_factory=lambda: CameraProcessor(
+                    mirrored=settings.camera.mirrored,
+                    show_fps=settings.camera.show_fps,
+                    privacy_blur=False,
+                    dozing_seconds=settings.monitoring.dozing_seconds,
+                    sleeping_seconds=settings.monitoring.sleeping_seconds,
+                ),
+                audio_processor_factory=None,
+                media_stream_constraints={
+                    "video": {
+                        "width": {"ideal": settings.camera.width},
+                        "height": {"ideal": settings.camera.height},
+                        "frameRate": {"ideal": settings.camera.target_fps},
+                    },
+                    "audio": False,
+                },
+                video_html_attrs={"autoPlay": True, "controls": False, "muted": True},
+                media_toggle_controls=False,
+                video_receiver_size=1,
+                sendback_audio=False,
+                async_processing=True,
+            )
+            if context.video_processor:
+                processor = context.video_processor
+                st.session_state.live_processor = processor
+                processor.configure(
+                    mirrored=settings.camera.mirrored,
+                    show_fps=settings.camera.show_fps,
+                    privacy_blur=False,
+                )
+                if st.session_state.calibration_requested:
+                    processor.start_calibration(10.0)
+                    st.session_state.calibration_requested = False
+                if st.session_state.reset_requested:
+                    processor.reset_session()
+                    st.session_state.reset_requested = False
+
+    with metrics_column:
+        _render_metrics()
+    with events_column:
+        _render_events()
+
+    st.markdown('<div class="trend-row"></div>', unsafe_allow_html=True)
+    _render_trends()
