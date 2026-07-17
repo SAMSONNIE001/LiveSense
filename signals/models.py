@@ -34,6 +34,11 @@ class SignalSnapshot:
     alarm_active: bool = False
     phone_at_ear: bool = False
     phone_side: str = ""
+    eating_detected: bool = False
+    drinking_detected: bool = False
+    seatbelt_visible: bool = False
+    seatbelt_warning: bool = False
+    face_missing_warning: bool = False
 
     @classmethod
     def waiting(cls) -> SignalSnapshot:

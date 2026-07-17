@@ -38,18 +38,18 @@ def _quality_label(value: float) -> str:
 
 
 def _render_alarm_notification() -> None:
-    """Emit a debounced browser notification and audible alarm."""
+    """Emit one browser notification and audible alarm per sleep episode."""
     st.html(
         """
         <script>
-          const now = Date.now();
-          const lastAlarm = Number(sessionStorage.getItem("livesense-last-alarm") || 0);
-          if (now - lastAlarm > 9000) {
-            sessionStorage.setItem("livesense-last-alarm", String(now));
+          const active = sessionStorage.getItem("livesense-alarm-active") === "true";
+          if (!active) {
+            sessionStorage.setItem("livesense-alarm-active", "true");
             if (window.Notification && Notification.permission === "granted") {
-              new Notification("LiveSense sleep alarm", {
+              window.__livesenseAlarmNotification = new Notification("LiveSense sleep alarm", {
                 body: "Sleep detected. Pull over now and stop in a safe place.",
-                requireInteraction: true
+                requireInteraction: true,
+                tag: "livesense-sleep-warning"
               });
             }
             const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -69,6 +69,21 @@ def _render_alarm_notification() -> None:
                 oscillator.stop(context.currentTime + delay + 0.24);
               });
             }
+          }
+        </script>
+        """,
+        unsafe_allow_javascript=True,
+    )
+
+
+def _clear_alarm_notification() -> None:
+    st.html(
+        """
+        <script>
+          sessionStorage.setItem("livesense-alarm-active", "false");
+          if (window.__livesenseAlarmNotification) {
+            window.__livesenseAlarmNotification.close();
+            window.__livesenseAlarmNotification = null;
           }
         </script>
         """,
@@ -125,8 +140,8 @@ def _render_local_camera_preview(active: bool) -> None:
         </div>
         <style>
           #livesense-preview-shell {
-            position: relative; width: 100%; overflow: hidden;
-            border-radius: 4px; background: #17201e; aspect-ratio: 16 / 9;
+            position: relative; width: 100%; height: 420px; overflow: hidden;
+            border-radius: 4px; background: #17201e;
           }
           #livesense-preview {
             display: block; width: 100%; height: 100%; object-fit: cover;
@@ -167,7 +182,7 @@ def _render_local_camera_preview(active: bool) -> None:
         """
     components.html(
         preview_html.replace("__LIVESENSE_ACTIVE__", "true" if active else "false"),
-        height=260,
+        height=430,
         scrolling=False,
     )
 
@@ -221,7 +236,7 @@ def _render_status_banner() -> None:
     if current.alarm_active:
         st.markdown(
             """
-            <div class="notice-banner notice-danger">
+            <div class="notice-banner notice-danger notice-critical">
               <span class="alarm-pulse">!</span>
               <div><strong>DANGER: PULL OVER NOW - SLEEP DETECTED</strong><br>
               Stop driving, move to a safe place, and rest before continuing.</div>
@@ -231,13 +246,62 @@ def _render_status_banner() -> None:
         )
         _render_alarm_notification()
         return
+    _clear_alarm_notification()
     if current.phone_at_ear:
         st.markdown(
             """
-            <div class="notice-banner notice-warning">
-              <span class="notice-icon">!</span>
+            <div class="notice-banner notice-danger">
+              <span class="danger-icon">!</span>
               <div><strong>PHONE USE DETECTED</strong><br>
-              Put the phone down and keep both hands available for safe driving.</div>
+              Put the phone down. This warning clears when phone use is no longer observed.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+    if current.face_missing_warning:
+        st.markdown(
+            """
+            <div class="notice-banner notice-danger">
+              <span class="danger-icon">!</span>
+              <div><strong>FACE NOT DETECTED</strong><br>
+              Return your face to the camera so safety monitoring can continue.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+    if current.seatbelt_warning:
+        st.markdown(
+            """
+            <div class="notice-banner notice-danger">
+              <span class="danger-icon">!</span>
+              <div><strong>SEAT BELT NOT CONFIRMED</strong><br>
+              Buckle up, or adjust the camera so the belt is visible across your chest.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+    if current.drinking_detected:
+        st.markdown(
+            """
+            <div class="notice-banner notice-danger">
+              <span class="danger-icon">!</span>
+              <div><strong>DRINKING DETECTED</strong><br>
+              Keep your hands and attention available for driving.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+    if current.eating_detected:
+        st.markdown(
+            """
+            <div class="notice-banner notice-danger">
+              <span class="danger-icon">!</span>
+              <div><strong>EATING DETECTED</strong><br>
+              Avoid eating while driving and restore full attention.</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -291,6 +355,10 @@ def _render_metrics() -> None:
     attention_state = "Stable" if current.attention >= 65 else "Needs attention"
     readiness_state = "Ready" if current.readiness >= 65 else "Building signal"
     phone_state = "Phone at ear" if current.phone_at_ear else "Clear"
+    eating_state = "Detected" if current.eating_detected else "Clear"
+    drinking_state = "Detected" if current.drinking_detected else "Clear"
+    seatbelt_state = "Visible" if current.seatbelt_visible else "Not confirmed"
+    face_state = "Visible" if current.face_detected else "Not detected"
     if current.activity == "Waiting for camera":
         recommendation = "Start camera monitoring to begin analysis."
     elif current.alarm_active:
@@ -299,6 +367,14 @@ def _render_metrics() -> None:
         recommendation = "Drowsiness detected. Pause the activity and take a restorative break."
     elif current.phone_at_ear:
         recommendation = "Put the phone down and keep your attention on the road."
+    elif current.drinking_detected:
+        recommendation = "Put the drink down and return both attention and control to driving."
+    elif current.eating_detected:
+        recommendation = "Stop eating and restore full attention to the road."
+    elif current.seatbelt_warning:
+        recommendation = "Buckle the seat belt, or adjust the camera so the belt is visible."
+    elif current.face_missing_warning:
+        recommendation = "Return your face to view so safety monitoring can continue."
     elif current.activity == "Attentive":
         recommendation = "Continue monitoring. Keep your face visible and posture upright."
     elif current.activity == "No face":
@@ -318,6 +394,10 @@ def _render_metrics() -> None:
           <span>Eyes: <strong>{"Closed" if current.eyes_closed else "Open"}</strong></span>
           <span>Yawn: <strong>{"Yes" if current.yawning else "No"}</strong></span>
           <span>Phone: <strong>{"Detected" if current.phone_at_ear else "Clear"}</strong></span>
+          <span>Eating: <strong>{eating_state}</strong></span>
+          <span>Drinking: <strong>{drinking_state}</strong></span>
+          <span>Seat belt: <strong>{seatbelt_state}</strong></span>
+          <span>Face: <strong>{face_state}</strong></span>
         </div>
         <div class="recommendation">
           <div class="recommendation-icon">RA</div>
@@ -504,60 +584,50 @@ def render_dashboard() -> None:
     )
     _render_status_banner()
 
-    camera_column, metrics_column, events_column = st.columns([1.4, 1.18, 0.86], gap="small")
-    with camera_column:
-        with st.container(border=True):
-            st.markdown(
-                '<div class="panel-head"><span class="panel-title">Live Camera Feed</span>'
-                '<span class="live-label"><span class="live-dot"></span>Live</span></div>',
-                unsafe_allow_html=True,
-            )
-            _render_local_camera_preview(st.session_state.camera_requested)
-            context = webrtc_streamer(
-                key="livesense-camera",
-                mode=WebRtcMode.SENDONLY,
-                desired_playing_state=st.session_state.camera_requested,
-                video_processor_factory=lambda: CameraProcessor(
-                    mirrored=settings.camera.mirrored,
-                    show_fps=settings.camera.show_fps,
-                    privacy_blur=False,
-                    dozing_seconds=settings.monitoring.dozing_seconds,
-                    sleeping_seconds=settings.monitoring.sleeping_seconds,
-                ),
-                audio_processor_factory=None,
-                media_stream_constraints={
-                    "video": {
-                        "width": {"ideal": settings.camera.width},
-                        "height": {"ideal": settings.camera.height},
-                        "frameRate": {"ideal": settings.camera.target_fps},
-                    },
-                    "audio": False,
+    with st.container(border=True):
+        st.markdown(
+            '<div class="panel-head"><span class="panel-title">Live Camera Feed</span>'
+            '<span class="live-label"><span class="live-dot"></span>Live</span></div>',
+            unsafe_allow_html=True,
+        )
+        _render_local_camera_preview(st.session_state.camera_requested)
+        context = webrtc_streamer(
+            key="livesense-camera",
+            mode=WebRtcMode.SENDONLY,
+            desired_playing_state=st.session_state.camera_requested,
+            video_processor_factory=lambda: CameraProcessor(
+                mirrored=settings.camera.mirrored,
+                show_fps=settings.camera.show_fps,
+                privacy_blur=False,
+                dozing_seconds=settings.monitoring.dozing_seconds,
+                sleeping_seconds=settings.monitoring.sleeping_seconds,
+            ),
+            audio_processor_factory=None,
+            media_stream_constraints={
+                "video": {
+                    "width": {"ideal": settings.camera.width},
+                    "height": {"ideal": settings.camera.height},
+                    "frameRate": {"ideal": settings.camera.target_fps},
                 },
-                video_html_attrs={"autoPlay": True, "controls": False, "muted": True},
-                media_toggle_controls=False,
-                video_receiver_size=1,
-                sendback_audio=False,
-                async_processing=True,
+                "audio": False,
+            },
+            video_html_attrs={"autoPlay": True, "controls": False, "muted": True},
+            media_toggle_controls=False,
+            video_receiver_size=1,
+            sendback_audio=False,
+            async_processing=True,
+        )
+        if context.video_processor:
+            processor = context.video_processor
+            st.session_state.live_processor = processor
+            processor.configure(
+                mirrored=settings.camera.mirrored,
+                show_fps=settings.camera.show_fps,
+                privacy_blur=False,
             )
-            if context.video_processor:
-                processor = context.video_processor
-                st.session_state.live_processor = processor
-                processor.configure(
-                    mirrored=settings.camera.mirrored,
-                    show_fps=settings.camera.show_fps,
-                    privacy_blur=False,
-                )
-                if st.session_state.calibration_requested:
-                    processor.start_calibration(10.0)
-                    st.session_state.calibration_requested = False
-                if st.session_state.reset_requested:
-                    processor.reset_session()
-                    st.session_state.reset_requested = False
-
-    with metrics_column:
-        _render_metrics()
-    with events_column:
-        _render_events()
-
-    st.markdown('<div class="trend-row"></div>', unsafe_allow_html=True)
-    _render_trends()
+            if st.session_state.calibration_requested:
+                processor.start_calibration(10.0)
+                st.session_state.calibration_requested = False
+            if st.session_state.reset_requested:
+                processor.reset_session()
+                st.session_state.reset_requested = False

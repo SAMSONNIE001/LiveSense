@@ -11,9 +11,17 @@ import cv2
 import numpy as np
 
 from analytics import SignalSession
-from signals import DrowsinessMonitor, SignalSnapshot
+from signals import DrowsinessMonitor, SignalSnapshot, StableObservation
 from utils.fps import FPSMeter
-from vision import FaceLandmarkAnalyzer, FaceLandmarkResult, HandPhoneAnalyzer, HandPhoneResult
+from vision import (
+    FaceLandmarkAnalyzer,
+    FaceLandmarkResult,
+    HandPhoneAnalyzer,
+    HandPhoneResult,
+    ObjectObservation,
+    ObjectObservationAnalyzer,
+    seatbelt_visible,
+)
 
 
 def _clamp(value: float) -> float:
@@ -30,8 +38,8 @@ class CameraProcessor:
         privacy_blur: bool = False,
         enable_landmarks: bool = True,
         enable_phone_detection: bool = True,
-        dozing_seconds: float = 0.8,
-        sleeping_seconds: float = 2.0,
+        dozing_seconds: float = 1.5,
+        sleeping_seconds: float = 4.0,
     ) -> None:
         self._mirrored = mirrored
         self._show_fps = show_fps
@@ -51,6 +59,7 @@ class CameraProcessor:
         self._eye_detector = cv2.CascadeClassifier(f"{cascade_root}haarcascade_eye.xml")
         self._landmark_analyzer: FaceLandmarkAnalyzer | None = None
         self._phone_analyzer: HandPhoneAnalyzer | None = None
+        self._object_analyzer: ObjectObservationAnalyzer | None = None
         if enable_landmarks:
             try:
                 self._landmark_analyzer = FaceLandmarkAnalyzer()
@@ -61,13 +70,28 @@ class CameraProcessor:
                 self._phone_analyzer = HandPhoneAnalyzer()
             except (FileNotFoundError, RuntimeError, ValueError):
                 self._phone_analyzer = None
+            try:
+                self._object_analyzer = ObjectObservationAnalyzer()
+            except (FileNotFoundError, RuntimeError, ValueError):
+                self._object_analyzer = None
 
         self._previous_motion_frame: np.ndarray | None = None
         self._frame_number = 0
         self._last_face: tuple[int, int, int, int] | None = None
         self._last_landmarks: FaceLandmarkResult | None = None
         self._last_phone_result = HandPhoneResult()
-        self._phone_hits = 0
+        self._last_object_result = ObjectObservation()
+        self._object_streaks = {"phone": 0, "drink": 0, "food": 0}
+        self._last_seatbelt_visible = False
+        # Object and hand cues must persist before a warning is published.  The
+        # longer clear time prevents the top notice from flickering between
+        # frames when a cup, phone, hand, or face is briefly occluded.
+        self._phone_object = StableObservation(activate_seconds=1.2, clear_seconds=1.5)
+        self._phone_hand = StableObservation(activate_seconds=2.0, clear_seconds=1.5)
+        self._drinking = StableObservation(activate_seconds=1.5, clear_seconds=1.5)
+        self._eating = StableObservation(activate_seconds=1.8, clear_seconds=1.5)
+        self._seatbelt_missing = StableObservation(activate_seconds=5.0, clear_seconds=2.0)
+        self._face_missing = StableObservation(activate_seconds=2.0, clear_seconds=1.0)
         self._calibration_until = 0.0
 
     def configure(
@@ -88,8 +112,18 @@ class CameraProcessor:
     def reset_session(self) -> None:
         self.session.reset()
         self._drowsiness.reset()
-        self._phone_hits = 0
         self._last_phone_result = HandPhoneResult()
+        self._last_object_result = ObjectObservation()
+        self._object_streaks = {"phone": 0, "drink": 0, "food": 0}
+        for observation in (
+            self._phone_object,
+            self._phone_hand,
+            self._drinking,
+            self._eating,
+            self._seatbelt_missing,
+            self._face_missing,
+        ):
+            observation.reset()
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         image = frame.to_ndarray(format="bgr24")
@@ -176,7 +210,30 @@ class CameraProcessor:
             head_pitch=head_pitch,
         )
         phone_result = self._detect_phone_use(image, face, now)
-        phone_at_ear = self._phone_hits >= 2
+        self._detect_objects(image, face, now)
+        phone_object_active = self._phone_object.update(
+            self._object_streaks["phone"] >= 2,
+            now,
+        )
+        phone_hand_active = self._phone_hand.update(phone_result.hand_near_ear, now)
+        phone_at_ear = phone_object_active or phone_hand_active
+        drinking_detected = self._drinking.update(
+            self._object_streaks["drink"] >= 2,
+            now,
+        )
+        eating_raw = self._object_streaks["food"] >= 2 or (
+            phone_result.hand_near_mouth
+            and landmarks is not None
+            and landmarks.mouth_open_score >= 0.24
+        )
+        eating_detected = self._eating.update(eating_raw, now)
+        if face is not None and self._frame_number % 6 == 1:
+            self._last_seatbelt_visible = seatbelt_visible(image, face)
+        seatbelt_warning = self._seatbelt_missing.update(
+            face_detected and not self._last_seatbelt_visible,
+            now,
+        )
+        face_missing_warning = self._face_missing.update(not face_detected, now)
 
         lighting_score = _clamp(100.0 - abs(brightness - 128.0) * 0.75)
         clarity_score = _clamp(clarity / 4.0)
@@ -199,6 +256,18 @@ class CameraProcessor:
         elif phone_at_ear:
             activity = "Phone use"
             status = "Phone Warning"
+        elif drinking_detected:
+            activity = "Drinking"
+            status = "Drinking Warning"
+        elif eating_detected:
+            activity = "Eating"
+            status = "Eating Warning"
+        elif seatbelt_warning:
+            activity = "Seat belt not visible"
+            status = "Seat Belt Warning"
+        elif face_missing_warning:
+            activity = "No face"
+            status = "Face Not Detected"
         elif not face_detected:
             activity = "No face"
             status = "Signal Interrupted"
@@ -237,6 +306,11 @@ class CameraProcessor:
             alarm_active=drowsiness.alarm_active,
             phone_at_ear=phone_at_ear,
             phone_side=phone_result.side if phone_at_ear else "",
+            eating_detected=eating_detected,
+            drinking_detected=drinking_detected,
+            seatbelt_visible=self._last_seatbelt_visible,
+            seatbelt_warning=seatbelt_warning,
+            face_missing_warning=face_missing_warning,
         )
 
     def _detect_landmarks(
@@ -261,7 +335,6 @@ class CameraProcessor:
     ) -> HandPhoneResult:
         if self._phone_analyzer is None or face is None:
             self._last_phone_result = HandPhoneResult()
-            self._phone_hits = 0
             return self._last_phone_result
         if self._frame_number % 6 == 1:
             try:
@@ -272,11 +345,35 @@ class CameraProcessor:
                 )
             except (RuntimeError, ValueError):
                 self._last_phone_result = HandPhoneResult()
-            if self._last_phone_result.hand_near_ear:
-                self._phone_hits = min(3, self._phone_hits + 1)
-            else:
-                self._phone_hits = 0
         return self._last_phone_result
+
+    def _detect_objects(
+        self,
+        image: np.ndarray,
+        face: tuple[int, int, int, int] | None,
+        now: float,
+    ) -> ObjectObservation:
+        if self._object_analyzer is None or face is None:
+            self._last_object_result = ObjectObservation()
+            self._object_streaks = {"phone": 0, "drink": 0, "food": 0}
+            return self._last_object_result
+        if self._frame_number % 8 == 1:
+            try:
+                self._last_object_result = self._object_analyzer.analyze(
+                    image,
+                    face,
+                    int(now * 1000),
+                )
+            except (RuntimeError, ValueError):
+                self._last_object_result = ObjectObservation()
+            observed = {
+                "phone": self._last_object_result.phone_near_ear,
+                "drink": self._last_object_result.drink_near_mouth,
+                "food": self._last_object_result.food_near_mouth,
+            }
+            for name, active in observed.items():
+                self._object_streaks[name] = min(3, self._object_streaks[name] + 1) if active else 0
+        return self._last_object_result
 
     def _haar_fallback(
         self,
@@ -434,5 +531,11 @@ class CameraProcessor:
         if phone_analyzer is not None:
             try:
                 phone_analyzer.close()
+            except RuntimeError:
+                pass
+        object_analyzer = getattr(self, "_object_analyzer", None)
+        if object_analyzer is not None:
+            try:
+                object_analyzer.close()
             except RuntimeError:
                 pass

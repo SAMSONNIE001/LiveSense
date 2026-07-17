@@ -33,6 +33,10 @@ class SignalSession:
         self._last_sleep_state = self._current.sleep_state
         self._last_cough_count = 0
         self._phone_active = False
+        self._eating_active = False
+        self._drinking_active = False
+        self._seatbelt_warning = False
+        self._face_missing_warning = False
 
     def update(self, snapshot: SignalSnapshot) -> None:
         """Store a signal result and emit debounced activity events."""
@@ -84,18 +88,46 @@ class SignalSession:
                         snapshot.timestamp,
                         "warning",
                         "Phone use detected",
-                        "A hand is being held beside the ear. "
+                        "A phone or sustained hand-at-ear cue was observed. "
                         "Put the phone down and stay attentive.",
                     )
                 )
                 self._last_event_at = snapshot.timestamp
 
+            observation_events = (
+                (
+                    snapshot.drinking_detected and not self._drinking_active,
+                    "Drinking detected",
+                    "A cup or bottle remained near the mouth.",
+                ),
+                (
+                    snapshot.eating_detected and not self._eating_active,
+                    "Eating detected",
+                    "Food, a utensil, or a hand remained near the mouth.",
+                ),
+                (
+                    snapshot.seatbelt_warning and not self._seatbelt_warning,
+                    "Seat belt not confirmed",
+                    "Buckle the seat belt or adjust the camera so it is visible.",
+                ),
+                (
+                    snapshot.face_missing_warning and not self._face_missing_warning,
+                    "Face not detected",
+                    "Return the face to view so safety monitoring can continue.",
+                ),
+            )
+            for activated, title, detail in observation_events:
+                if activated:
+                    self._events.appendleft(
+                        SignalEvent(snapshot.timestamp, "warning", title, detail)
+                    )
+                    self._last_event_at = snapshot.timestamp
+
             changed = snapshot.activity != self._last_activity
             can_emit = snapshot.timestamp - self._last_event_at >= 5.0
-            if changed and can_emit and snapshot.activity in {"No face", "Looking away", "Moving"}:
+            if changed and can_emit and snapshot.activity in {"Looking away", "Moving"}:
                 level = "warning" if snapshot.activity != "Moving" else "info"
                 detail = {
-                    "No face": "The camera temporarily lost a reliable face signal.",
                     "Looking away": "Attention moved outside the central monitoring area.",
                     "Moving": "A noticeable movement change was detected.",
                 }[snapshot.activity]
@@ -107,6 +139,10 @@ class SignalSession:
             self._last_sleep_state = snapshot.sleep_state
             self._last_cough_count = snapshot.cough_count
             self._phone_active = snapshot.phone_at_ear
+            self._eating_active = snapshot.eating_detected
+            self._drinking_active = snapshot.drinking_detected
+            self._seatbelt_warning = snapshot.seatbelt_warning
+            self._face_missing_warning = snapshot.face_missing_warning
 
     def snapshot(self) -> SessionView:
         """Return a consistent view for the Streamlit rendering thread."""
@@ -125,3 +161,7 @@ class SignalSession:
             self._last_sleep_state = self._current.sleep_state
             self._last_cough_count = 0
             self._phone_active = False
+            self._eating_active = False
+            self._drinking_active = False
+            self._seatbelt_warning = False
+            self._face_missing_warning = False

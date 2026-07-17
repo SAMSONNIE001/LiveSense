@@ -126,13 +126,18 @@ THEME_CSS = """
   }
   .notice-danger {
     border-color: #d83e38; background: #fff0ef; color: #9f201c;
-    animation: alarm-flash .8s ease-in-out infinite alternate;
   }
+  .notice-critical { animation: alarm-flash 1.4s ease-in-out infinite alternate; }
   .notice-warning { border-color: #e5a12f; background: #fff8e9; color: #8b5a08; }
   .notice-icon {
     display: grid; place-items: center; flex: 0 0 auto;
     width: 2rem; height: 2rem; border-radius: 50%;
     background: #e5a12f; color: white; font-size: 1.1rem; font-weight: 900;
+  }
+  .danger-icon {
+    display: grid; place-items: center; flex: 0 0 auto;
+    width: 2rem; height: 2rem; border-radius: 50%;
+    background: #d83e38; color: white; font-size: 1.1rem; font-weight: 900;
   }
   .alarm-pulse {
     display: grid; place-items: center; flex: 0 0 auto;
@@ -253,7 +258,7 @@ THEME_CSS = """
     .status-icon { width: 1.55rem; height: 1.55rem; }
     .alarm-banner, .notice-banner { padding: .4rem .65rem; margin-bottom: .3rem; }
     .alarm-pulse { width: 1.55rem; height: 1.55rem; }
-    .notice-icon { width: 1.55rem; height: 1.55rem; }
+    .notice-icon, .danger-icon { width: 1.55rem; height: 1.55rem; }
     .panel { padding: .42rem; }
     .panel-head { margin-bottom: .26rem; }
     video { max-height: 34vh !important; object-fit: cover; }

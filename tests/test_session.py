@@ -6,13 +6,14 @@ from analytics import SignalSession
 from signals import SignalSnapshot
 
 
-def test_session_records_history_and_activity_event() -> None:
+def test_session_records_history_and_missing_face_event() -> None:
     session = SignalSession(sample_interval=1.0)
     snapshot = replace(
         SignalSnapshot.waiting(),
         timestamp=10.0,
         activity="No face",
         driver_status="Signal Interrupted",
+        face_missing_warning=True,
     )
 
     session.update(snapshot)
@@ -20,7 +21,7 @@ def test_session_records_history_and_activity_event() -> None:
 
     assert view.current.activity == "No face"
     assert view.history == (snapshot,)
-    assert view.events[0].title == "No face"
+    assert view.events[0].title == "Face not detected"
 
 
 def test_session_reset_clears_history_and_events() -> None:
@@ -83,3 +84,23 @@ def test_session_records_phone_use_once() -> None:
 
     events = session.snapshot().events
     assert [event.title for event in events].count("Phone use detected") == 1
+
+
+def test_session_records_each_new_safety_observation_once() -> None:
+    session = SignalSession()
+    observed = replace(
+        SignalSnapshot.waiting(),
+        timestamp=30.0,
+        activity="Drinking",
+        drinking_detected=True,
+        eating_detected=True,
+        seatbelt_warning=True,
+    )
+
+    session.update(observed)
+    session.update(replace(observed, timestamp=31.0))
+
+    titles = [event.title for event in session.snapshot().events]
+    assert titles.count("Drinking detected") == 1
+    assert titles.count("Eating detected") == 1
+    assert titles.count("Seat belt not confirmed") == 1

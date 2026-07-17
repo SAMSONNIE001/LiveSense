@@ -14,5 +14,12 @@ bundle used by `vision/hand_phone.py`.
 - SHA-256: `fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1`
 - Runtime: MediaPipe Tasks Vision, CPU
 
-The model is bundled so LiveSense does not download executable model data when
+`efficientdet_lite0.tflite` is the official MediaPipe EfficientDet-Lite0 int8
+object detector used to confirm phones, cups, bottles, food, and utensils.
+
+- Source: `https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/1/efficientdet_lite0.tflite`
+- SHA-256: `0720bf247bd76e6594ea28fa9c6f7c5242be774818997dbbeffc4da460c723bb`
+- Runtime: MediaPipe Tasks Vision, CPU
+
+The models are bundled so LiveSense does not download executable model data when
 the dashboard starts.

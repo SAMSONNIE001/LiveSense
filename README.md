@@ -4,14 +4,16 @@
 
 LiveSense is a privacy-conscious driver-state monitoring dashboard that performs
 low-latency local camera analysis. It monitors awake, drowsy, dozing, sleeping,
-attention, movement, and hand-at-ear phone-use signals.
+attention, movement, object-assisted phone use, eating, drinking, seat-belt,
+and missing-face signals.
 
 ## Current capabilities
 
 - Browser-based webcam capture (no server-side camera access required)
 - MediaPipe face landmarks for eye closure, yawning, and head-angle cues
 - Duration-based `Awake`, `Drowsy`, `Dozing`, and `Sleeping` state machine
-- MediaPipe hand landmarks for phone-at-ear warnings
+- MediaPipe hand landmarks plus EfficientDet-Lite0 for steadier phone-at-ear warnings
+- Eating, drinking, seat-belt-not-confirmed, and missing-face observations
 - Critical sleep event with a red pull-over warning, audible alarm, and notification
 - Zero-round-trip browser preview with conditions shown in the top warning banner
 - Rolling drowsiness, attention, and phone-use trends
@@ -38,8 +40,8 @@ operating-system browser notifications. Camera permission requires `localhost`
 or an HTTPS deployment. LiveSense does not request microphone access.
 
 Sleep timing can be adjusted in `config/settings.yaml`. The default begins a
-dozing warning after 0.8 seconds of sustained closure and activates the sleep
-alarm after 2 seconds.
+dozing warning after 1.5 seconds of sustained closure and activates the sleep
+alarm after 4 seconds.
 
 ## Test
 
@@ -70,8 +72,9 @@ points, and [docs/roadmap.md](docs/roadmap.md) for upcoming milestones.
 ## Privacy
 
 LiveSense processes video frames in memory and does not record or persist them.
-Sleep, drowsiness, yawning, and phone-use results are automated cues, not medical
-diagnoses or substitutes for human supervision or certified safety systems.
+Sleep, drowsiness, yawning, phone-use, eating, drinking, and seat-belt results
+are automated visual cues, not definitive safety or medical diagnoses or
+substitutes for human supervision or certified safety systems.
 
 ## License
 

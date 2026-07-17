@@ -26,6 +26,7 @@ class HandPhoneResult:
 
     hand_near_ear: bool = False
     side: str = ""
+    hand_near_mouth: bool = False
 
 
 def hand_near_face_ear(
@@ -87,7 +88,12 @@ class HandPhoneAnalyzer:
             sum(float(landmarks[index].x) for index in palm_indexes) * width / len(palm_indexes),
             sum(float(landmarks[index].y) for index in palm_indexes) * height / len(palm_indexes),
         )
-        return hand_near_face_ear(palm, face_box)
+        ear_result = hand_near_face_ear(palm, face_box)
+        left, top, face_width, face_height = face_box
+        mouth = (left + face_width * 0.5, top + face_height * 0.76)
+        mouth_radius = max(face_width * 0.48, face_height * 0.3)
+        near_mouth = hypot(palm[0] - mouth[0], palm[1] - mouth[1]) <= mouth_radius
+        return HandPhoneResult(ear_result.hand_near_ear, ear_result.side, near_mouth)
 
     def close(self) -> None:
         self._landmarker.close()
