@@ -17,17 +17,47 @@ THEME_CSS = """
   html, body, [class*="css"] {
     font-family: Inter, "Segoe UI", Arial, sans-serif;
   }
+  html, body, #root, .stApp, [data-testid="stAppViewContainer"] {
+    height: 100vh;
+    max-height: 100vh;
+    overflow: hidden;
+  }
   .stApp { background: var(--canvas); color: var(--ink); }
+  [data-testid="stMain"] {
+    height: 100vh;
+    max-height: 100vh;
+    overflow: hidden;
+  }
   [data-testid="stHeader"] { background: transparent; height: 0; }
   [data-testid="stToolbar"] { display: none; }
   [data-testid="stSidebar"] {
     min-width: 218px;
     max-width: 218px;
+    height: 100vh;
+    max-height: 100vh;
+    overflow: hidden;
     background: #ffffff;
     border-right: 1px solid var(--line);
   }
-  [data-testid="stSidebar"] > div:first-child { padding: 1rem .8rem; }
-  .block-container { max-width: 1540px; padding: .75rem 1.15rem 1.4rem; }
+  [data-testid="stSidebar"] > div:first-child,
+  [data-testid="stSidebarContent"],
+  [data-testid="stSidebarUserContent"] {
+    box-sizing: border-box;
+    height: 100%;
+    max-height: 100vh;
+    overflow: hidden;
+  }
+  [data-testid="stSidebar"] > div:first-child,
+  [data-testid="stSidebarContent"],
+  [data-testid="stSidebarUserContent"] { padding: 1rem .8rem; }
+  .block-container {
+    box-sizing: border-box;
+    height: 100vh;
+    max-height: 100vh;
+    max-width: 1540px;
+    overflow: hidden;
+    padding: .75rem 1.15rem .55rem;
+  }
   .stApp p { color: var(--ink); }
   div[data-testid="stVerticalBlock"] { gap: .55rem; }
   div[data-testid="column"] { min-width: 0; }
@@ -177,6 +207,73 @@ THEME_CSS = """
     .quality { min-width: 9rem; }
     .status-banner { grid-template-columns: auto 1fr; }
     .quality { grid-column: 1 / -1; border-left: 0; padding-left: 0; }
+  }
+
+  /* Keep the complete monitoring console inside a typical laptop viewport. */
+  @media (max-height: 820px) {
+    [data-testid="stSidebar"] > div:first-child,
+    [data-testid="stSidebarContent"],
+    [data-testid="stSidebarUserContent"] { padding: .55rem .7rem; }
+    .block-container { padding: .3rem .8rem .35rem; }
+    div[data-testid="stVerticalBlock"] { gap: .28rem; }
+
+    .brand { margin-bottom: .45rem; }
+    .brand-mark { width: 1.7rem; height: 1.7rem; }
+    .brand-subtitle { margin-top: .08rem; }
+    .side-section { margin: .45rem 0 .22rem; }
+    .nav-item { padding: .36rem .52rem; }
+    [data-testid="stSidebar"] .stButton > button {
+      min-height: 1.55rem; padding: .12rem .4rem;
+    }
+    [data-testid="stSidebar"] [data-baseweb="select"] > div { min-height: 1.65rem; }
+
+    .topbar { min-height: 1.35rem; }
+    .status-banner {
+      gap: .5rem; padding: .42rem .65rem; margin-bottom: .3rem;
+    }
+    .status-icon { width: 1.55rem; height: 1.55rem; }
+    .alarm-banner { padding: .4rem .65rem; margin-bottom: .3rem; }
+    .alarm-pulse { width: 1.55rem; height: 1.55rem; }
+    .panel { padding: .42rem; }
+    .panel-head { margin-bottom: .26rem; }
+    video { max-height: 34vh !important; object-fit: cover; }
+    [data-testid="stCustomComponentV1"] iframe { max-height: 35vh; }
+
+    .metric-grid { gap: .3rem; }
+    .metric-box { padding: .35rem .42rem; }
+    .metric-number { margin-top: .1rem; font-size: .92rem; }
+    .metric-state { margin: .1rem 0 .18rem; }
+    .recommendation { gap: .4rem; margin-top: .3rem; padding: .35rem; }
+    .recommendation-icon { width: 1.35rem; height: 1.35rem; }
+    .activity-pill { margin-top: .28rem; padding: .2rem .38rem; }
+    .cue-grid { gap: .2rem; margin-top: .25rem; }
+    .cue-grid span { padding: .2rem .3rem; }
+    .event-empty { padding: .42rem .25rem; }
+    .event-item { padding: .32rem 0; }
+
+    .trend-row { margin-top: .3rem; }
+    .trend-card { padding: .4rem .5rem .2rem; }
+    .trend-label { margin: .28rem 0 .05rem; }
+    .sparkline { height: 2.45rem; }
+  }
+
+  @media (max-height: 680px) {
+    [data-testid="stSidebar"] > div:first-child,
+    [data-testid="stSidebarContent"],
+    [data-testid="stSidebarUserContent"] { padding: .35rem .62rem; }
+    .block-container { padding: .18rem .65rem .22rem; }
+    .brand { margin-bottom: .25rem; }
+    .brand-subtitle { display: none; }
+    .side-section { margin: .25rem 0 .12rem; }
+    .nav-item { padding: .25rem .45rem; }
+    [data-testid="stSidebar"] .stButton > button { min-height: 1.35rem; }
+    .topbar { min-height: 1rem; }
+    .user-chip { font-size: .58rem; }
+    .status-banner { padding: .3rem .5rem; margin-bottom: .2rem; }
+    .status-copy, .quality-copy { display: none; }
+    video { max-height: 30vh !important; }
+    [data-testid="stCustomComponentV1"] iframe { max-height: 31vh; }
+    .sparkline { height: 1.8rem; }
   }
 </style>
 """
