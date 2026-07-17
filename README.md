@@ -12,8 +12,11 @@ and missing-face signals.
 - Browser-based webcam capture (no server-side camera access required)
 - MediaPipe face landmarks for eye closure, yawning, and head-angle cues
 - Duration-based `Awake`, `Drowsy`, `Dozing`, and `Sleeping` state machine
-- MediaPipe hand landmarks plus EfficientDet-Lite0 for steadier phone-at-ear warnings
+- Two-hand MediaPipe tracking plus EfficientDet-Lite0 for phone-at-ear and
+  phone-in-hand warnings
 - Eating, drinking, seat-belt-not-confirmed, and missing-face observations
+- Upper-body object cropping to improve small phone, cup, bottle, food, and
+  utensil detection near the driver
 - Critical sleep event with a red pull-over warning, audible alarm, and notification
 - Zero-round-trip browser preview with conditions shown in the top warning banner
 - Rolling drowsiness, attention, and phone-use trends

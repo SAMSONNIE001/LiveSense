@@ -484,31 +484,8 @@ def _render_status_banner() -> None:
         )
         return
 
-    quality = _quality_label(current.signal_quality)
-    if current.driver_status == "Camera Ready":
-        copy = "Start the camera to begin monitoring."
-    elif current.driver_status == "Normal":
-        copy = "No danger signal detected."
-    else:
-        copy = f"Live activity: {current.activity}. Keep the face visible and centered."
-    st.markdown(
-        f"""
-        <div class="status-banner">
-          <div class="status-icon">&#10003;</div>
-          <div>
-            <div class="status-title">Monitoring Status: {escape(current.driver_status)}</div>
-            <div class="status-copy">{escape(copy)}</div>
-          </div>
-          <div class="quality">
-            <div class="quality-row">
-              <span class="quality-label">Signal Quality</span>
-              <span class="quality-value">{quality} - {current.signal_quality:.0f}%</span>
-            </div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    # Normal state is represented in the compact console header.  This
+    # fragment only consumes vertical space when an actionable warning exists.
 
 
 @st.fragment(run_every=1.0)
@@ -747,19 +724,326 @@ def _render_trends() -> None:
     )
 
 
+def _duration_text(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def _mini_line(values: list[float], color: str) -> str:
+    values = values[-20:] if values else [0.0, 0.0]
+    if len(values) == 1:
+        values = [values[0], values[0]]
+    points = []
+    for index, value in enumerate(values):
+        x = index * 80 / (len(values) - 1)
+        y = 15 - max(0.0, min(100.0, value)) * 0.13
+        points.append(f"{x:.1f},{y:.1f}")
+    return (
+        '<svg class="mini-line" viewBox="0 0 80 16" preserveAspectRatio="none">'
+        f'<polyline points="{" ".join(points)}" fill="none" stroke="{color}" '
+        'stroke-width="1.2" vector-effect="non-scaling-stroke" /></svg>'
+    )
+
+
+def _signal_card(
+    label: str,
+    value: float,
+    state: str,
+    color: str,
+    history: list[float],
+) -> str:
+    return dedent(
+        f"""
+        <div class="key-signal-card">
+          <div class="key-signal-head"><i style="color:{color}">&#9670;</i>{escape(label)}</div>
+          <div class="key-signal-value" style="color:{color}">{value:.0f}<small>/100</small></div>
+          <div class="key-signal-state">{escape(state)}</div>
+          {_mini_line(history, color)}
+        </div>
+        """
+    ).strip()
+
+
+@st.fragment(run_every=1.0)
+def _render_console_header() -> None:
+    current, history, _ = _live_view()
+    started_at = history[0].timestamp if history else current.timestamp
+    uptime = _duration_text(current.timestamp - started_at)
+    now = datetime.now()
+    active = current.driver_status != "Camera Ready"
+    status = "Monitoring Active" if active else "Monitoring Ready"
+    status_copy = "All systems are running smoothly" if active else "Start camera monitoring"
+    st.markdown(
+        f"""
+        <div class="console-header">
+          <div class="system-status-card">
+            <span class="system-check">&#10003;</span>
+            <div><strong>{status}</strong><small>{status_copy}</small></div>
+            <span class="header-pulse"></span>
+          </div>
+          <div class="header-stat"><i>&#128247;</i><span>Camera
+            <strong>{"Live" if active else "Ready"}</strong></span></div>
+          <div class="header-stat"><i>&#9635;</i><span>Resolution
+            <strong>640 &times; 360</strong></span></div>
+          <div class="header-stat"><i>&#9673;</i><span>FPS
+            <strong>{current.fps:.0f}</strong></span></div>
+          <div class="header-stat"><i>&#9684;</i><span>Uptime<strong>{uptime}</strong></span></div>
+          <div class="header-time"><small>{now:%b %d, %Y}</small>
+            <strong>{now:%H:%M:%S}</strong></div>
+          <div class="header-user"><span></span>Work</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+@st.fragment(run_every=1.0)
+def _render_key_signals() -> None:
+    current, history, _ = _live_view()
+    points = list(history)
+    cards = (
+        _signal_card(
+            "Attention",
+            current.attention,
+            "Focused" if current.attention >= 65 else "Low",
+            "#21c9ed",
+            [p.attention for p in points],
+        ),
+        _signal_card(
+            "Drowsiness",
+            current.drowsiness,
+            current.sleep_state,
+            "#f0a11f",
+            [p.drowsiness for p in points],
+        ),
+        _signal_card(
+            "Readiness",
+            current.readiness,
+            "Ready" if current.readiness >= 65 else "Building",
+            "#39d98a",
+            [p.readiness for p in points],
+        ),
+        _signal_card(
+            "Stress",
+            current.tension,
+            "Low" if current.tension < 35 else "Elevated",
+            "#a875ef",
+            [p.tension for p in points],
+        ),
+        _signal_card(
+            "Eye openness",
+            0.0 if current.eyes_closed else 100.0,
+            "Open" if not current.eyes_closed else "Closed",
+            "#23bde5",
+            [0.0 if p.eyes_closed else 100.0 for p in points],
+        ),
+        _signal_card(
+            "Phone use",
+            100.0 if current.phone_at_ear else 0.0,
+            "Detected" if current.phone_at_ear else "Clear",
+            "#e65c55",
+            [100.0 if p.phone_at_ear else 0.0 for p in points],
+        ),
+        _signal_card(
+            "Yawning",
+            100.0 if current.yawning else 0.0,
+            "Detected" if current.yawning else "None",
+            "#dc8a24",
+            [100.0 if p.yawning else 0.0 for p in points],
+        ),
+        _signal_card(
+            "Face visibility",
+            100.0 if current.face_detected else 0.0,
+            "Visible" if current.face_detected else "Missing",
+            "#c37bf1",
+            [100.0 if p.face_detected else 0.0 for p in points],
+        ),
+    )
+    st.markdown(
+        '<div class="console-panel"><div class="console-panel-head">'
+        "<strong>KEY SIGNALS</strong><span>Live</span></div>"
+        f'<div class="key-signal-grid">{"".join(cards)}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _activity_row(label: str, active: bool, active_text: str, clear_text: str = "Clear") -> str:
+    state_class = "activity-alert" if active else "activity-clear"
+    state = active_text if active else clear_text
+    icon = "!" if active else "&#10003;"
+    return (
+        f'<div class="activity-row"><span class="{state_class}">{icon}</span>'
+        f'<label>{escape(label)}</label><strong class="{state_class}">'
+        f"{escape(state)}</strong></div>"
+    )
+
+
+@st.fragment(run_every=1.0)
+def _render_activity_status() -> None:
+    current, _, _ = _live_view()
+    rows = (
+        _activity_row("Face detected", not current.face_detected, "Missing", "Yes"),
+        _activity_row("Eyes closed", current.eyes_closed, "Yes", "No"),
+        _activity_row("Looking away", current.activity == "Looking away", "Yes", "No"),
+        _activity_row("Phone use", current.phone_at_ear, "Detected", "No"),
+        _activity_row("Eating", current.eating_detected, "Detected", "No"),
+        _activity_row("Drinking", current.drinking_detected, "Detected", "No"),
+        _activity_row("Seat belt", current.seatbelt_warning, "Not confirmed", "Confirmed"),
+        _activity_row(
+            "Drowsy",
+            current.sleep_state in {"Drowsy", "Dozing", "Sleeping"},
+            current.sleep_state,
+            "No",
+        ),
+    )
+    st.markdown(
+        '<div class="console-panel activity-panel"><div class="console-panel-head">'
+        "<strong>ACTIVITY STATUS</strong><span>Live checks</span></div>"
+        f'<div class="activity-status-grid">{"".join(rows)}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+@st.fragment(run_every=1.0)
+def _render_signal_quality() -> None:
+    current, _, _ = _live_view()
+    quality = max(0.0, min(100.0, current.signal_quality))
+    lighting = "Good" if 55 <= current.brightness <= 205 else "Adjust"
+    stability = "Good" if current.tension < 35 else "Moving"
+    frame_rate = "Good" if current.fps >= 8 else "Low"
+    st.markdown(
+        f"""
+        <div class="console-panel quality-panel">
+          <div class="console-panel-head"><strong>SIGNAL QUALITY</strong><span>Live</span></div>
+          <div class="quality-gauge" style="--quality:{quality * 3.6:.0f}deg">
+            <div><strong>{quality:.0f}%</strong><small>{_quality_label(quality)}</small></div>
+          </div>
+          <div class="quality-list">
+            <span><i></i>Lighting<strong>{lighting}</strong></span>
+            <span><i></i>Face signal
+              <strong>{"Good" if current.face_detected else "Missing"}</strong></span>
+            <span><i></i>Stability<strong>{stability}</strong></span>
+            <span><i></i>Frame rate<strong>{frame_rate}</strong></span>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+@st.fragment(run_every=1.0)
+def _render_event_timeline() -> None:
+    _, _, events = _live_view()
+    items = []
+    for event in events[:6]:
+        observed = datetime.fromtimestamp(event.timestamp).strftime("%H:%M:%S")
+        level = "timeline-critical" if event.level == "critical" else "timeline-warning"
+        items.append(
+            f'<div class="timeline-item"><time>{observed}</time><i class="{level}"></i>'
+            f"<span>{escape(event.title)}</span></div>"
+        )
+    if not items:
+        items.append('<div class="timeline-empty">No events detected in this session</div>')
+    st.markdown(
+        '<div class="console-panel timeline-panel"><div class="console-panel-head">'
+        "<strong>EVENT TIMELINE</strong><span>View all</span></div>"
+        f'<div class="timeline-list">{"".join(items)}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _plot_legend(series: list[tuple[str, str, list[float], str]]) -> str:
+    return "".join(
+        f'<span class="signal-legend-item"><i style="background:{color}"></i>{escape(label)}</span>'
+        for label, _state, _values, color in series
+    )
+
+
+def _chart_panel(title: str, series: list[tuple[str, str, list[float], str]]) -> str:
+    return dedent(
+        f"""
+        <div class="console-panel chart-panel">
+          <div class="console-panel-head"><strong>{escape(title)}</strong>
+            <span>10 minutes &#9662;</span></div>
+          <div class="signal-legend">{_plot_legend(series)}</div>
+          {_combined_activity_plot(series)}
+        </div>
+        """
+    ).strip()
+
+
+@st.fragment(run_every=1.0)
+def _render_activity_chart() -> None:
+    _, history, _ = _live_view()
+    points = list(history)
+    series = [
+        ("Attention", "", [p.attention for p in points], "#21c9ed"),
+        ("Drowsiness", "", [p.drowsiness for p in points], "#f0a11f"),
+        ("Readiness", "", [p.readiness for p in points], "#39d98a"),
+        ("Stress", "", [p.tension for p in points], "#a875ef"),
+    ]
+    st.markdown(_chart_panel("ACTIVITY OVER TIME", series), unsafe_allow_html=True)
+
+
+@st.fragment(run_every=1.0)
+def _render_drowsiness_chart() -> None:
+    _, history, _ = _live_view()
+    points = list(history)
+    series = [
+        ("Drowsiness", "", [p.drowsiness for p in points], "#e88521"),
+        ("Yawning", "", [100.0 if p.yawning else 0.0 for p in points], "#f0c11f"),
+        ("Eyes closed", "", [100.0 if p.eyes_closed else 0.0 for p in points], "#e65c55"),
+    ]
+    st.markdown(_chart_panel("DROWSINESS & YAWNING", series), unsafe_allow_html=True)
+
+
+@st.fragment(run_every=1.0)
+def _render_session_summary() -> None:
+    current, history, events = _live_view()
+    points = list(history)
+    started = points[0].timestamp if points else current.timestamp
+    duration = max(0.0, current.timestamp - started)
+    active_ratio = sum(1 for point in points if point.face_detected) / max(1, len(points))
+    alert_count = sum(1 for event in events if event.level in {"warning", "critical"})
+    average_quality = sum(point.signal_quality for point in points) / max(1, len(points))
+    st.markdown(
+        f"""
+        <div class="console-panel summary-panel">
+          <div class="console-panel-head"><strong>SESSION SUMMARY</strong>
+            <span>View report</span></div>
+          <div class="summary-grid">
+            <div><i>&#9684;</i><span>Duration<strong>{_duration_text(duration)}</strong></span></div>
+            <div><i>&#10022;</i><span>Active time
+              <strong>{active_ratio * 100:.0f}%</strong></span></div>
+            <div><i>&#9888;</i><span>Alerts<strong>{alert_count}</strong></span></div>
+            <div><i>&#9673;</i><span>Avg. signal<strong>{average_quality:.0f}%</strong></span></div>
+          </div>
+          <div class="summary-bar"><i style="width:{average_quality:.0f}%"></i></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _render_sidebar() -> None:
     st.markdown(
         """
         <div class="brand">
           <div class="brand-mark">LS</div>
           <div><div class="brand-title">LiveSense</div>
-          <div class="brand-subtitle">Human activity & safety monitoring</div></div>
+          <div class="brand-subtitle">Human Activity &amp; Safety Monitoring</div></div>
         </div>
-        <div class="side-section">MONITORING</div>
-        <div class="nav-item nav-active">Live Dashboard</div>
-        <div class="nav-item nav-muted">Sessions</div>
-        <div class="nav-item nav-muted">Reports</div>
-        <div class="side-section">CAMERA</div>
+        <div class="nav-item nav-active"><span>&#9670;</span>Dashboard</div>
+        <div class="nav-item nav-muted"><span>&#9635;</span>Live Feed</div>
+        <div class="nav-item nav-muted"><span>&#9719;</span>Sessions</div>
+        <div class="nav-item nav-muted"><span>&#8645;</span>Analytics</div>
+        <div class="nav-item nav-muted"><span>&#9888;</span>Alerts <b class="nav-badge">2</b></div>
+        <div class="nav-item nav-muted"><span>&#9776;</span>Reports</div>
+        <div class="nav-item nav-muted"><span>&#8682;</span>Export Data</div>
+        <div class="nav-item nav-muted"><span>&#9881;</span>Settings</div>
+        <div class="side-section">QUICK ACTIONS</div>
         """,
         unsafe_allow_html=True,
     )
@@ -776,28 +1060,61 @@ def _render_sidebar() -> None:
     if st.button("Start New Session", use_container_width=True):
         st.session_state.reset_requested = True
 
-    st.markdown('<div class="side-section">CONTEXT</div>', unsafe_allow_html=True)
-    st.selectbox(
-        "Mode",
-        ["General", "Driver", "Desk work", "Care"],
-        index=1,
-        label_visibility="visible",
+    st.markdown(
+        """
+        <div class="side-section">SYSTEM STATUS</div>
+        <div class="system-online"><i></i><span>All Systems Operational</span></div>
+        <div class="sidebar-user"><span class="user-avatar"></span>
+          <div><strong>Admin User</strong><small>Administrator</small></div><b>&#8964;</b>
+        </div>
+        <div class="sidebar-disclaimer">Visual safety estimates only</div>
+        """,
+        unsafe_allow_html=True,
     )
-    st.selectbox(
-        "Monitoring Context",
-        ["Chair", "Standing", "Vehicle", "Bed"],
-        index=2,
-        label_visibility="visible",
-    )
-    st.markdown('<div class="side-section">ALARMS</div>', unsafe_allow_html=True)
-    _render_notification_permission()
 
-    st.markdown('<div class="side-section">FEEDBACK</div>', unsafe_allow_html=True)
-    feedback = st.selectbox("Latest Feedback", ["None", "Helpful", "Needs review"])
-    if st.button("Save Feedback", use_container_width=True):
-        st.session_state.latest_feedback = feedback
-        st.toast("Feedback saved for this session.")
-    st.caption("Visual estimates only — not medical or safety advice.")
+
+def _mount_hidden_analyzer(settings) -> None:
+    """Mount analysis transport after the immediate local preview and dashboard UI."""
+    context = webrtc_streamer(
+        key="livesense-camera",
+        mode=WebRtcMode.SENDONLY,
+        desired_playing_state=st.session_state.camera_requested,
+        video_processor_factory=lambda: CameraProcessor(
+            mirrored=settings.camera.mirrored,
+            show_fps=settings.camera.show_fps,
+            privacy_blur=False,
+            dozing_seconds=settings.monitoring.dozing_seconds,
+            sleeping_seconds=settings.monitoring.sleeping_seconds,
+        ),
+        audio_processor_factory=None,
+        media_stream_constraints={
+            "video": {
+                "width": {"ideal": settings.camera.width},
+                "height": {"ideal": settings.camera.height},
+                "frameRate": {"ideal": settings.camera.target_fps},
+            },
+            "audio": False,
+        },
+        video_html_attrs={"autoPlay": True, "controls": False, "muted": True},
+        media_toggle_controls=False,
+        video_receiver_size=1,
+        sendback_audio=False,
+        async_processing=True,
+    )
+    if context.video_processor:
+        processor = context.video_processor
+        st.session_state.live_processor = processor
+        processor.configure(
+            mirrored=settings.camera.mirrored,
+            show_fps=settings.camera.show_fps,
+            privacy_blur=False,
+        )
+        if st.session_state.calibration_requested:
+            processor.start_calibration(10.0)
+            st.session_state.calibration_requested = False
+        if st.session_state.reset_requested:
+            processor.reset_session()
+            st.session_state.reset_requested = False
 
 
 def render_dashboard() -> None:
@@ -827,62 +1144,38 @@ def render_dashboard() -> None:
         '<span class="user-avatar"></span> Work</span></div>',
         unsafe_allow_html=True,
     )
+    _render_console_header()
     _render_status_banner()
 
-    camera_column, metrics_column, events_column = st.columns([1.4, 1.18, 0.86], gap="small")
+    camera_column, signals_column, quality_column = st.columns([1.05, 1.22, 0.58], gap="small")
     with camera_column:
         with st.container(border=True):
             st.markdown(
-                '<div class="panel-head"><span class="panel-title">Live Camera Feed</span>'
+                '<div class="panel-head"><span class="panel-title">LIVE CAMERA FEED</span>'
                 '<span class="live-label"><span class="live-dot"></span>Live</span></div>',
                 unsafe_allow_html=True,
             )
             _render_local_camera_preview(st.session_state.camera_requested)
-            context = webrtc_streamer(
-                key="livesense-camera",
-                mode=WebRtcMode.SENDONLY,
-                desired_playing_state=st.session_state.camera_requested,
-                video_processor_factory=lambda: CameraProcessor(
-                    mirrored=settings.camera.mirrored,
-                    show_fps=settings.camera.show_fps,
-                    privacy_blur=False,
-                    dozing_seconds=settings.monitoring.dozing_seconds,
-                    sleeping_seconds=settings.monitoring.sleeping_seconds,
-                ),
-                audio_processor_factory=None,
-                media_stream_constraints={
-                    "video": {
-                        "width": {"ideal": settings.camera.width},
-                        "height": {"ideal": settings.camera.height},
-                        "frameRate": {"ideal": settings.camera.target_fps},
-                    },
-                    "audio": False,
-                },
-                video_html_attrs={"autoPlay": True, "controls": False, "muted": True},
-                media_toggle_controls=False,
-                video_receiver_size=1,
-                sendback_audio=False,
-                async_processing=True,
-            )
-            if context.video_processor:
-                processor = context.video_processor
-                st.session_state.live_processor = processor
-                processor.configure(
-                    mirrored=settings.camera.mirrored,
-                    show_fps=settings.camera.show_fps,
-                    privacy_blur=False,
-                )
-                if st.session_state.calibration_requested:
-                    processor.start_calibration(10.0)
-                    st.session_state.calibration_requested = False
-                if st.session_state.reset_requested:
-                    processor.reset_session()
-                    st.session_state.reset_requested = False
+    with signals_column:
+        _render_key_signals()
+        _render_activity_status()
+    with quality_column:
+        _render_signal_quality()
+        _render_event_timeline()
 
-    with metrics_column:
-        _render_metrics()
-    with events_column:
-        _render_events()
+    chart_one, chart_two, summary = st.columns([1.0, 1.0, 0.55], gap="small")
+    with chart_one:
+        _render_activity_chart()
+    with chart_two:
+        _render_drowsiness_chart()
+    with summary:
+        _render_session_summary()
 
-    st.markdown('<div class="trend-row"></div>', unsafe_allow_html=True)
-    _render_trends()
+    st.markdown(
+        '<div class="console-tip"><span>&#9671;</span><strong>TIP</strong> Keep good lighting '
+        "and a clear view of the face, shoulders, hands, food, drink, and phone.</div>",
+        unsafe_allow_html=True,
+    )
+
+    with camera_column:
+        _mount_hidden_analyzer(settings)

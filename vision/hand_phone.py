@@ -27,6 +27,7 @@ class HandPhoneResult:
     hand_near_ear: bool = False
     side: str = ""
     hand_near_mouth: bool = False
+    palm_positions: tuple[tuple[float, float], ...] = ()
 
 
 def hand_near_face_ear(
@@ -57,10 +58,10 @@ class HandPhoneAnalyzer:
         options = mp.tasks.vision.HandLandmarkerOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=str(path)),
             running_mode=mp.tasks.vision.RunningMode.VIDEO,
-            num_hands=1,
-            min_hand_detection_confidence=0.55,
-            min_hand_presence_confidence=0.55,
-            min_tracking_confidence=0.55,
+            num_hands=2,
+            min_hand_detection_confidence=0.48,
+            min_hand_presence_confidence=0.48,
+            min_tracking_confidence=0.48,
         )
         self._landmarker = mp.tasks.vision.HandLandmarker.create_from_options(options)
         self._last_timestamp_ms = 0
@@ -81,19 +82,31 @@ class HandPhoneAnalyzer:
         if not result.hand_landmarks:
             return HandPhoneResult()
 
-        landmarks = result.hand_landmarks[0]
         height, width = image_bgr.shape[:2]
         palm_indexes = (0, 5, 9, 13, 17)
-        palm = (
-            sum(float(landmarks[index].x) for index in palm_indexes) * width / len(palm_indexes),
-            sum(float(landmarks[index].y) for index in palm_indexes) * height / len(palm_indexes),
-        )
-        ear_result = hand_near_face_ear(palm, face_box)
         left, top, face_width, face_height = face_box
         mouth = (left + face_width * 0.5, top + face_height * 0.76)
-        mouth_radius = max(face_width * 0.48, face_height * 0.3)
-        near_mouth = hypot(palm[0] - mouth[0], palm[1] - mouth[1]) <= mouth_radius
-        return HandPhoneResult(ear_result.hand_near_ear, ear_result.side, near_mouth)
+        mouth_radius = max(face_width * 0.58, face_height * 0.36)
+        palms: list[tuple[float, float]] = []
+        near_ear = False
+        side = ""
+        near_mouth = False
+        for landmarks in result.hand_landmarks:
+            palm = (
+                sum(float(landmarks[index].x) for index in palm_indexes)
+                * width
+                / len(palm_indexes),
+                sum(float(landmarks[index].y) for index in palm_indexes)
+                * height
+                / len(palm_indexes),
+            )
+            palms.append(palm)
+            ear_result = hand_near_face_ear(palm, face_box)
+            if ear_result.hand_near_ear and not near_ear:
+                near_ear = True
+                side = ear_result.side
+            near_mouth = near_mouth or hypot(palm[0] - mouth[0], palm[1] - mouth[1]) <= mouth_radius
+        return HandPhoneResult(near_ear, side, near_mouth, tuple(palms))
 
     def close(self) -> None:
         self._landmarker.close()

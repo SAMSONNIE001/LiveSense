@@ -16,6 +16,17 @@ def test_phone_must_be_close_to_an_ear() -> None:
     assert far.phone_near_ear is False
 
 
+def test_phone_close_to_detected_hand_is_classified_as_held() -> None:
+    result = classify_object_cues(
+        [("cell phone", 0.82, (220, 150, 24, 42))],
+        FACE,
+        hand_points=((232.0, 170.0),),
+    )
+
+    assert result.phone_near_ear is False
+    assert result.phone_near_hand is True
+
+
 def test_drink_and_food_must_be_close_to_mouth() -> None:
     drink = classify_object_cues([("cup", 0.8, (128, 110, 24, 32))], FACE)
     food = classify_object_cues([("sandwich", 0.8, (125, 108, 32, 28))], FACE)
@@ -40,6 +51,7 @@ def test_object_detector_model_loads() -> None:
             np.zeros((120, 160, 3), dtype=np.uint8),
             (50, 20, 60, 80),
             timestamp_ms=1,
+            hand_points=((35.0, 85.0),),
         )
         assert result.phone_near_ear is False
     finally:

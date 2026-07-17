@@ -86,10 +86,10 @@ class CameraProcessor:
         # Object and hand cues must persist before a warning is published.  The
         # longer clear time prevents the top notice from flickering between
         # frames when a cup, phone, hand, or face is briefly occluded.
-        self._phone_object = StableObservation(activate_seconds=1.2, clear_seconds=1.5)
-        self._phone_hand = StableObservation(activate_seconds=2.0, clear_seconds=1.5)
-        self._drinking = StableObservation(activate_seconds=1.5, clear_seconds=1.5)
-        self._eating = StableObservation(activate_seconds=1.8, clear_seconds=1.5)
+        self._phone_object = StableObservation(activate_seconds=0.8, clear_seconds=1.4)
+        self._phone_hand = StableObservation(activate_seconds=1.4, clear_seconds=1.4)
+        self._drinking = StableObservation(activate_seconds=1.0, clear_seconds=1.4)
+        self._eating = StableObservation(activate_seconds=1.2, clear_seconds=1.4)
         self._seatbelt_missing = StableObservation(activate_seconds=5.0, clear_seconds=2.0)
         self._face_missing = StableObservation(activate_seconds=2.0, clear_seconds=1.0)
         self._calibration_until = 0.0
@@ -210,7 +210,7 @@ class CameraProcessor:
             head_pitch=head_pitch,
         )
         phone_result = self._detect_phone_use(image, face, now)
-        self._detect_objects(image, face, now)
+        self._detect_objects(image, face, phone_result.palm_positions, now)
         phone_object_active = self._phone_object.update(
             self._object_streaks["phone"] >= 2,
             now,
@@ -224,7 +224,7 @@ class CameraProcessor:
         eating_raw = self._object_streaks["food"] >= 2 or (
             phone_result.hand_near_mouth
             and landmarks is not None
-            and landmarks.mouth_open_score >= 0.24
+            and landmarks.mouth_open_score >= 0.18
         )
         eating_detected = self._eating.update(eating_raw, now)
         if face is not None and self._frame_number % 6 == 1:
@@ -351,23 +351,28 @@ class CameraProcessor:
         self,
         image: np.ndarray,
         face: tuple[int, int, int, int] | None,
+        hand_points: tuple[tuple[float, float], ...],
         now: float,
     ) -> ObjectObservation:
         if self._object_analyzer is None or face is None:
             self._last_object_result = ObjectObservation()
             self._object_streaks = {"phone": 0, "drink": 0, "food": 0}
             return self._last_object_result
-        if self._frame_number % 8 == 1:
+        if self._frame_number % 5 == 1:
             try:
                 self._last_object_result = self._object_analyzer.analyze(
                     image,
                     face,
                     int(now * 1000),
+                    hand_points,
                 )
             except (RuntimeError, ValueError):
                 self._last_object_result = ObjectObservation()
             observed = {
-                "phone": self._last_object_result.phone_near_ear,
+                "phone": (
+                    self._last_object_result.phone_near_ear
+                    or self._last_object_result.phone_near_hand
+                ),
                 "drink": self._last_object_result.drink_near_mouth,
                 "food": self._last_object_result.food_near_mouth,
             }

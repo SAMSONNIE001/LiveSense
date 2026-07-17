@@ -27,5 +27,6 @@ def test_hand_landmarker_model_loads() -> None:
             timestamp_ms=1,
         )
         assert result.hand_near_ear is False
+        assert result.palm_positions == ()
     finally:
         analyzer.close()

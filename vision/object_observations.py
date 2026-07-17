@@ -46,6 +46,7 @@ class ObjectObservation:
     """Relevant object cues positioned around the face."""
 
     phone_near_ear: bool = False
+    phone_near_hand: bool = False
     drink_near_mouth: bool = False
     food_near_mouth: bool = False
     strongest_label: str = ""
@@ -61,15 +62,18 @@ def _distance_to_box(point: tuple[float, float], box: tuple[int, int, int, int])
 def classify_object_cues(
     objects: list[tuple[str, float, tuple[int, int, int, int]]],
     face_box: tuple[int, int, int, int],
+    hand_points: tuple[tuple[float, float], ...] = (),
 ) -> ObjectObservation:
     """Interpret labelled object boxes relative to approximate ears and mouth."""
     left, top, width, height = face_box
     ears = ((left, top + height * 0.48), (left + width, top + height * 0.48))
     mouth = (left + width * 0.5, top + height * 0.76)
     phone_radius = max(width * 0.52, height * 0.34)
-    mouth_radius = max(width * 0.62, height * 0.34)
+    mouth_radius = max(width * 0.82, height * 0.48)
+    hand_radius = max(width * 0.58, height * 0.38)
 
-    phone = False
+    phone_at_ear = False
+    phone_at_hand = False
     drinking = False
     eating = False
     strongest_label = ""
@@ -79,13 +83,22 @@ def classify_object_cues(
             strongest_score = score
             strongest_label = label
         near_ear = min(_distance_to_box(ear, box) for ear in ears) <= phone_radius
-        if label in PHONE_LABELS and near_ear:
-            phone = True
+        if label in PHONE_LABELS:
+            phone_at_ear = phone_at_ear or near_ear
+            phone_at_hand = phone_at_hand or any(
+                _distance_to_box(hand, box) <= hand_radius for hand in hand_points
+            )
         elif label in DRINK_LABELS and _distance_to_box(mouth, box) <= mouth_radius:
             drinking = True
         elif label in FOOD_LABELS and _distance_to_box(mouth, box) <= mouth_radius:
             eating = True
-    return ObjectObservation(phone, drinking, eating, strongest_label)
+    return ObjectObservation(
+        phone_at_ear,
+        phone_at_hand,
+        drinking,
+        eating,
+        strongest_label,
+    )
 
 
 def seatbelt_visible(
@@ -134,8 +147,8 @@ class ObjectObservationAnalyzer:
         options = mp.tasks.vision.ObjectDetectorOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=str(path)),
             running_mode=mp.tasks.vision.RunningMode.VIDEO,
-            max_results=5,
-            score_threshold=0.34,
+            max_results=10,
+            score_threshold=0.26,
             category_allowlist=OBSERVATION_LABELS,
         )
         self._detector = mp.tasks.vision.ObjectDetector.create_from_options(options)
@@ -146,10 +159,24 @@ class ObjectObservationAnalyzer:
         image_bgr: np.ndarray,
         face_box: tuple[int, int, int, int],
         timestamp_ms: int,
+        hand_points: tuple[tuple[float, float], ...] = (),
     ) -> ObjectObservation:
         timestamp_ms = max(timestamp_ms, self._last_timestamp_ms + 1)
         self._last_timestamp_ms = timestamp_ms
-        image_rgb = np.ascontiguousarray(image_bgr[:, :, ::-1])
+        frame_height, frame_width = image_bgr.shape[:2]
+        left, top, width, height = face_box
+        crop_left = max(0, int(left - width * 1.2))
+        crop_right = min(frame_width, int(left + width * 2.2))
+        crop_top = max(0, int(top - height * 0.4))
+        crop_bottom = min(frame_height, int(top + height * 3.0))
+        cropped = image_bgr[crop_top:crop_bottom, crop_left:crop_right]
+        if cropped.shape[0] < 80 or cropped.shape[1] < 80:
+            cropped = image_bgr
+            crop_left = 0
+            crop_top = 0
+        local_face = (left - crop_left, top - crop_top, width, height)
+        local_hands = tuple((x - crop_left, y - crop_top) for x, y in hand_points)
+        image_rgb = np.ascontiguousarray(cropped[:, :, ::-1])
         result = self._detector.detect_for_video(
             mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb),
             timestamp_ms,
@@ -172,7 +199,7 @@ class ObjectObservationAnalyzer:
                     ),
                 )
             )
-        return classify_object_cues(objects, face_box)
+        return classify_object_cues(objects, local_face, local_hands)
 
     def close(self) -> None:
         self._detector.close()
