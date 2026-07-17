@@ -32,6 +32,7 @@ class SignalSession:
         self._last_activity = self._current.activity
         self._last_sleep_state = self._current.sleep_state
         self._last_cough_count = 0
+        self._phone_active = False
 
     def update(self, snapshot: SignalSnapshot) -> None:
         """Store a signal result and emit debounced activity events."""
@@ -77,6 +78,18 @@ class SignalSession:
                 )
                 self._last_event_at = snapshot.timestamp
 
+            if snapshot.phone_at_ear and not self._phone_active:
+                self._events.appendleft(
+                    SignalEvent(
+                        snapshot.timestamp,
+                        "warning",
+                        "Phone use detected",
+                        "A hand is being held beside the ear. "
+                        "Put the phone down and stay attentive.",
+                    )
+                )
+                self._last_event_at = snapshot.timestamp
+
             changed = snapshot.activity != self._last_activity
             can_emit = snapshot.timestamp - self._last_event_at >= 5.0
             if changed and can_emit and snapshot.activity in {"No face", "Looking away", "Moving"}:
@@ -93,6 +106,7 @@ class SignalSession:
             self._last_activity = snapshot.activity
             self._last_sleep_state = snapshot.sleep_state
             self._last_cough_count = snapshot.cough_count
+            self._phone_active = snapshot.phone_at_ear
 
     def snapshot(self) -> SessionView:
         """Return a consistent view for the Streamlit rendering thread."""
@@ -110,3 +124,4 @@ class SignalSession:
             self._last_activity = self._current.activity
             self._last_sleep_state = self._current.sleep_state
             self._last_cough_count = 0
+            self._phone_active = False

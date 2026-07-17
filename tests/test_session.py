@@ -66,3 +66,20 @@ def test_session_records_new_cough_count() -> None:
     )
 
     assert session.snapshot().events[0].title == "Suspected cough"
+
+
+def test_session_records_phone_use_once() -> None:
+    session = SignalSession()
+    phone_snapshot = replace(
+        SignalSnapshot.waiting(),
+        timestamp=20.0,
+        activity="Phone use",
+        phone_at_ear=True,
+        phone_side="right",
+    )
+
+    session.update(phone_snapshot)
+    session.update(replace(phone_snapshot, timestamp=21.0))
+
+    events = session.snapshot().events
+    assert [event.title for event in events].count("Phone use detected") == 1

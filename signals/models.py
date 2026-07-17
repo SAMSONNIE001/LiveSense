@@ -32,6 +32,8 @@ class SignalSnapshot:
     cough_count: int = 0
     audio_level: float = 0.0
     alarm_active: bool = False
+    phone_at_ear: bool = False
+    phone_side: str = ""
 
     @classmethod
     def waiting(cls) -> SignalSnapshot:

@@ -11,10 +11,13 @@ def test_default_settings_load() -> None:
     settings = load_settings()
 
     assert settings.app.title == "LiveSense"
-    assert settings.camera.width == 1280
+    assert settings.camera.width == 640
+    assert settings.camera.height == 360
+    assert settings.camera.target_fps == 24
     assert settings.camera.mirrored is True
     assert settings.privacy.persist_frames is False
-    assert settings.monitoring.sleeping_seconds == 3.0
+    assert settings.monitoring.dozing_seconds == 0.8
+    assert settings.monitoring.sleeping_seconds == 2.0
 
 
 def test_invalid_camera_dimensions_are_rejected(tmp_path: Path) -> None:

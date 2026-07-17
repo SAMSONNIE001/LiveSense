@@ -11,9 +11,9 @@ import cv2
 import numpy as np
 
 from analytics import SignalSession
-from signals import AudioActivityDetector, DrowsinessMonitor, SignalSnapshot
+from signals import DrowsinessMonitor, SignalSnapshot
 from utils.fps import FPSMeter
-from vision import FaceLandmarkAnalyzer, FaceLandmarkResult
+from vision import FaceLandmarkAnalyzer, FaceLandmarkResult, HandPhoneAnalyzer, HandPhoneResult
 
 
 def _clamp(value: float) -> float:
@@ -21,17 +21,17 @@ def _clamp(value: float) -> float:
 
 
 class CameraProcessor:
-    """Publish face, sleep, attention, movement, and cough-assisted signals."""
+    """Publish low-latency face, sleep, attention, movement, and phone-use signals."""
 
     def __init__(
         self,
         mirrored: bool = True,
         show_fps: bool = True,
         privacy_blur: bool = False,
-        audio_detector: AudioActivityDetector | None = None,
         enable_landmarks: bool = True,
-        dozing_seconds: float = 1.1,
-        sleeping_seconds: float = 3.0,
+        enable_phone_detection: bool = True,
+        dozing_seconds: float = 0.8,
+        sleeping_seconds: float = 2.0,
     ) -> None:
         self._mirrored = mirrored
         self._show_fps = show_fps
@@ -39,7 +39,6 @@ class CameraProcessor:
         self._settings_lock = Lock()
         self._fps = FPSMeter()
         self.session = SignalSession()
-        self.audio_detector = audio_detector or AudioActivityDetector()
         self._drowsiness = DrowsinessMonitor(
             dozing_seconds=dozing_seconds,
             sleeping_seconds=sleeping_seconds,
@@ -51,16 +50,24 @@ class CameraProcessor:
         )
         self._eye_detector = cv2.CascadeClassifier(f"{cascade_root}haarcascade_eye.xml")
         self._landmark_analyzer: FaceLandmarkAnalyzer | None = None
+        self._phone_analyzer: HandPhoneAnalyzer | None = None
         if enable_landmarks:
             try:
                 self._landmark_analyzer = FaceLandmarkAnalyzer()
             except (FileNotFoundError, RuntimeError, ValueError):
                 self._landmark_analyzer = None
+        if enable_landmarks and enable_phone_detection:
+            try:
+                self._phone_analyzer = HandPhoneAnalyzer()
+            except (FileNotFoundError, RuntimeError, ValueError):
+                self._phone_analyzer = None
 
         self._previous_motion_frame: np.ndarray | None = None
         self._frame_number = 0
         self._last_face: tuple[int, int, int, int] | None = None
         self._last_landmarks: FaceLandmarkResult | None = None
+        self._last_phone_result = HandPhoneResult()
+        self._phone_hits = 0
         self._calibration_until = 0.0
 
     def configure(
@@ -81,24 +88,45 @@ class CameraProcessor:
     def reset_session(self) -> None:
         self.session.reset()
         self._drowsiness.reset()
-        self.audio_detector.reset()
+        self._phone_hits = 0
+        self._last_phone_result = HandPhoneResult()
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         image = frame.to_ndarray(format="bgr24")
         fps = self._fps.tick()
         with self._settings_lock:
             mirrored = self._mirrored
-            show_fps = self._show_fps
             privacy_blur = self._privacy_blur
         if mirrored:
             image = np.ascontiguousarray(image[:, ::-1])
 
-        snapshot = self._analyze(image, fps)
+        analysis_image, scale_x, scale_y = self._analysis_frame(image)
+        snapshot = self._analyze(analysis_image, fps)
         self.session.update(snapshot)
-        if privacy_blur and self._last_face is not None:
-            self._blur_face(image, self._last_face)
-        self._draw_overlay(image, snapshot, self._last_face, show_fps)
+        if self._last_face is not None:
+            x, y, width, height = self._last_face
+            display_face = (
+                int(x * scale_x),
+                int(y * scale_y),
+                int(width * scale_x),
+                int(height * scale_y),
+            )
+        else:
+            display_face = None
+        if privacy_blur and display_face is not None:
+            self._blur_face(image, display_face)
         return av.VideoFrame.from_ndarray(image, format="bgr24")
+
+    @staticmethod
+    def _analysis_frame(image: np.ndarray, max_width: int = 480) -> tuple[np.ndarray, float, float]:
+        """Return a smaller inference frame while preserving the clear output frame."""
+        height, width = image.shape[:2]
+        if width <= max_width:
+            return image, 1.0, 1.0
+        analysis_width = max_width
+        analysis_height = max(1, round(height * analysis_width / width))
+        resized = cv2.resize(image, (analysis_width, analysis_height), interpolation=cv2.INTER_AREA)
+        return resized, width / analysis_width, height / analysis_height
 
     def _analyze(self, image: np.ndarray, fps: float) -> SignalSnapshot:
         now = monotonic()
@@ -118,7 +146,7 @@ class CameraProcessor:
             head_pitch = landmarks.head_pitch
             head_yaw = landmarks.head_yaw
             eyes_detected = 0 if eyes_closed else 2
-        else:
+        elif self._landmark_analyzer is None:
             face, eyes_detected = self._haar_fallback(gray, image.shape[1])
             face_detected = face is not None
             # Haar eye absence is too ambiguous to activate a sleep alarm. It is
@@ -127,6 +155,15 @@ class CameraProcessor:
             yawning = False
             head_pitch = 0.0
             head_yaw = 0.0
+        else:
+            face = None
+            eyes_detected = 0
+            face_detected = False
+            eyes_closed = False
+            yawning = False
+            head_pitch = 0.0
+            head_yaw = 0.0
+        self._last_face = face
 
         attention, face_scale_score = self._attention_scores(
             face, gray.shape, eyes_detected, head_yaw
@@ -138,7 +175,8 @@ class CameraProcessor:
             yawning=yawning,
             head_pitch=head_pitch,
         )
-        audio = self.audio_detector.snapshot(now)
+        phone_result = self._detect_phone_use(image, face, now)
+        phone_at_ear = self._phone_hits >= 2
 
         lighting_score = _clamp(100.0 - abs(brightness - 128.0) * 0.75)
         clarity_score = _clamp(clarity / 4.0)
@@ -158,9 +196,9 @@ class CameraProcessor:
         elif drowsiness.state in {"Dozing", "Drowsy"}:
             activity = drowsiness.state
             status = "Drowsiness Detected"
-        elif audio.cough_detected:
-            activity = "Coughing"
-            status = "Cough Detected"
+        elif phone_at_ear:
+            activity = "Phone use"
+            status = "Phone Warning"
         elif not face_detected:
             activity = "No face"
             status = "Signal Interrupted"
@@ -193,10 +231,12 @@ class CameraProcessor:
             drowsiness=drowsiness.score,
             head_pitch=head_pitch,
             yawning=yawning,
-            cough_detected=audio.cough_detected,
-            cough_count=audio.cough_count,
-            audio_level=audio.level,
+            cough_detected=False,
+            cough_count=0,
+            audio_level=0.0,
             alarm_active=drowsiness.alarm_active,
+            phone_at_ear=phone_at_ear,
+            phone_side=phone_result.side if phone_at_ear else "",
         )
 
     def _detect_landmarks(
@@ -206,12 +246,37 @@ class CameraProcessor:
     ) -> FaceLandmarkResult | None:
         if self._landmark_analyzer is None:
             return None
-        if self._frame_number % 2 == 1 or self._last_landmarks is None:
+        if self._frame_number % 3 == 1:
             try:
                 self._last_landmarks = self._landmark_analyzer.analyze(image, int(now * 1000))
             except (RuntimeError, ValueError):
                 self._last_landmarks = None
         return self._last_landmarks
+
+    def _detect_phone_use(
+        self,
+        image: np.ndarray,
+        face: tuple[int, int, int, int] | None,
+        now: float,
+    ) -> HandPhoneResult:
+        if self._phone_analyzer is None or face is None:
+            self._last_phone_result = HandPhoneResult()
+            self._phone_hits = 0
+            return self._last_phone_result
+        if self._frame_number % 6 == 1:
+            try:
+                self._last_phone_result = self._phone_analyzer.analyze(
+                    image,
+                    face,
+                    int(now * 1000),
+                )
+            except (RuntimeError, ValueError):
+                self._last_phone_result = HandPhoneResult()
+            if self._last_phone_result.hand_near_ear:
+                self._phone_hits = min(3, self._phone_hits + 1)
+            else:
+                self._phone_hits = 0
+        return self._last_phone_result
 
     def _haar_fallback(
         self,
@@ -363,5 +428,11 @@ class CameraProcessor:
         if analyzer is not None:
             try:
                 analyzer.close()
+            except RuntimeError:
+                pass
+        phone_analyzer = getattr(self, "_phone_analyzer", None)
+        if phone_analyzer is not None:
+            try:
+                phone_analyzer.close()
             except RuntimeError:
                 pass

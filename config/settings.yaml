@@ -4,9 +4,9 @@ app:
   page_icon: "LS"
 
 camera:
-  width: 1280
-  height: 720
-  target_fps: 30
+  width: 640
+  height: 360
+  target_fps: 24
   mirrored: true
   show_fps: true
 
@@ -14,5 +14,5 @@ privacy:
   persist_frames: false
 
 monitoring:
-  dozing_seconds: 1.1
-  sleeping_seconds: 3.0
+  dozing_seconds: 0.8
+  sleeping_seconds: 2.0

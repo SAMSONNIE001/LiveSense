@@ -20,9 +20,9 @@ class AppSettings:
 
 @dataclass(frozen=True, slots=True)
 class CameraSettings:
-    width: int = 1280
-    height: int = 720
-    target_fps: int = 30
+    width: int = 640
+    height: int = 360
+    target_fps: int = 24
     mirrored: bool = True
     show_fps: bool = True
 
@@ -40,8 +40,8 @@ class PrivacySettings:
 
 @dataclass(frozen=True, slots=True)
 class MonitoringSettings:
-    dozing_seconds: float = 1.1
-    sleeping_seconds: float = 3.0
+    dozing_seconds: float = 0.8
+    sleeping_seconds: float = 2.0
 
     def __post_init__(self) -> None:
         if self.dozing_seconds <= 0:

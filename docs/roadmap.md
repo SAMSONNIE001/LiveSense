@@ -18,12 +18,12 @@
 - [x] Session events and rolling trend charts
 - [x] Calibration and session controls
 
-## Milestone 2 — Sleep, dozing, and cough analysis
+## Milestone 2 — Sleep, dozing, and phone-use analysis
 
 - [x] Bundled MediaPipe face landmark pipeline
 - [x] Persistent eye-closure sleep state machine
 - [x] Yawn and head-angle drowsiness cues
-- [x] Suspected cough audio-burst analysis
+- [x] Hand-at-ear phone-use warning
 - [x] Critical visual, audible, and browser notification alarm
 - [x] Configurable dozing and sleeping thresholds
 
@@ -32,7 +32,7 @@
 - [ ] Pose landmarks
 - [ ] Configurable landmark overlay
 - [ ] Calibrated drowsiness benchmark dataset
-- [ ] Validated cough-classification model
+- [ ] Validated phone-use benchmark dataset
 - [ ] False-positive and performance benchmarks
 
 ## Later milestones

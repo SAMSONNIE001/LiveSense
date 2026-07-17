@@ -119,6 +119,21 @@ THEME_CSS = """
     background: #fff0ef; color: #a92723; font-size: .68rem;
     animation: alarm-flash 1s ease-in-out infinite alternate;
   }
+  .notice-banner {
+    display: flex; align-items: center; gap: .75rem; margin-bottom: .55rem;
+    padding: .72rem .9rem; border: 2px solid; border-radius: .38rem;
+    font-size: .7rem; line-height: 1.45;
+  }
+  .notice-danger {
+    border-color: #d83e38; background: #fff0ef; color: #9f201c;
+    animation: alarm-flash .8s ease-in-out infinite alternate;
+  }
+  .notice-warning { border-color: #e5a12f; background: #fff8e9; color: #8b5a08; }
+  .notice-icon {
+    display: grid; place-items: center; flex: 0 0 auto;
+    width: 2rem; height: 2rem; border-radius: 50%;
+    background: #e5a12f; color: white; font-size: 1.1rem; font-weight: 900;
+  }
   .alarm-pulse {
     display: grid; place-items: center; flex: 0 0 auto;
     width: 2rem; height: 2rem; border-radius: 50%;
@@ -232,8 +247,9 @@ THEME_CSS = """
       gap: .5rem; padding: .42rem .65rem; margin-bottom: .3rem;
     }
     .status-icon { width: 1.55rem; height: 1.55rem; }
-    .alarm-banner { padding: .4rem .65rem; margin-bottom: .3rem; }
+    .alarm-banner, .notice-banner { padding: .4rem .65rem; margin-bottom: .3rem; }
     .alarm-pulse { width: 1.55rem; height: 1.55rem; }
+    .notice-icon { width: 1.55rem; height: 1.55rem; }
     .panel { padding: .42rem; }
     .panel-head { margin-bottom: .26rem; }
     video { max-height: 34vh !important; object-fit: cover; }

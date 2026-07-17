@@ -2,23 +2,22 @@
 
 **Real-time Human Signal Intelligence using Computer Vision.**
 
-LiveSense is a privacy-conscious human-state monitoring dashboard that combines
-a browser camera and microphone with local signal analysis. It monitors awake,
-drowsy, dozing, and sleeping states, suspected cough events, attention, movement,
-signal quality, session events, and rolling trends.
+LiveSense is a privacy-conscious driver-state monitoring dashboard that performs
+low-latency local camera analysis. It monitors awake, drowsy, dozing, sleeping,
+attention, movement, and hand-at-ear phone-use signals.
 
 ## Current capabilities
 
 - Browser-based webcam capture (no server-side camera access required)
 - MediaPipe face landmarks for eye closure, yawning, and head-angle cues
 - Duration-based `Awake`, `Drowsy`, `Dozing`, and `Sleeping` state machine
-- Suspected cough detection from short microphone audio bursts
-- Critical sleep event, red visual alarm, audible beeps, and browser notification
-- Camera overlays for sleep state, eyes, cough count, activity, and FPS
-- Rolling drowsiness, attention, and audio-activity trends
-- Camera, microphone, privacy blur, calibration, feedback, and session controls
+- MediaPipe hand landmarks for phone-at-ear warnings
+- Critical sleep event with a red pull-over warning, audible alarm, and notification
+- Clear camera output with detected conditions shown in the top warning banner
+- Rolling drowsiness, attention, and phone-use trends
+- Camera, privacy blur, calibration, feedback, and session controls
 - Configurable video and dashboard settings
-- Bundled official MediaPipe Face Landmarker model for offline runtime use
+- Bundled official MediaPipe face and hand landmarker models for offline runtime use
 - Automated unit tests
 
 ## Quick start
@@ -34,13 +33,13 @@ streamlit run app.py
 ```
 
 Open the local URL displayed by Streamlit, select **Start Camera**, and allow
-camera and microphone access. Select **Enable alarm notifications** in the
-sidebar if you want operating-system browser notifications. Camera and microphone
-permissions require `localhost` or an HTTPS deployment.
+camera access. Select **Enable alarm notifications** in the sidebar if you want
+operating-system browser notifications. Camera permission requires `localhost`
+or an HTTPS deployment. LiveSense does not request microphone access.
 
 Sleep timing can be adjusted in `config/settings.yaml`. The default begins a
-dozing warning after 1.1 seconds of sustained closure and activates the sleep
-alarm after 3 seconds.
+dozing warning after 0.8 seconds of sustained closure and activates the sleep
+alarm after 2 seconds.
 
 ## Test
 
@@ -55,8 +54,8 @@ app.py                 Streamlit entry point
 camera/                Browser video processing and camera state
 dashboard/             UI composition and visual theme
 config/                YAML configuration and typed settings
-vision/                MediaPipe face landmark pipeline
-signals/               Drowsiness and audio-burst state machines
+vision/                MediaPipe face and hand landmark pipelines
+signals/               Drowsiness and shared signal state machines
 analytics/             Session history, events, and interpretation
 events/                Application event models
 reports/               Report generation
@@ -70,10 +69,9 @@ points, and [docs/roadmap.md](docs/roadmap.md) for upcoming milestones.
 
 ## Privacy
 
-LiveSense processes video and audio frames in memory and does not record or
-persist them. Sleep, drowsiness, yawning, and cough results are automated cues,
-not medical diagnoses or substitutes for human supervision or certified safety
-systems. A suspected cough may also be triggered by another short, loud sound.
+LiveSense processes video frames in memory and does not record or persist them.
+Sleep, drowsiness, yawning, and phone-use results are automated cues, not medical
+diagnoses or substitutes for human supervision or certified safety systems.
 
 ## License
 

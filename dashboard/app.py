@@ -12,7 +12,7 @@ from streamlit_webrtc import WebRtcMode, webrtc_streamer
 from camera import CameraProcessor
 from config import load_settings
 from dashboard.theme import THEME_CSS
-from signals import AudioActivityDetector, AudioActivityProcessor, SignalSnapshot
+from signals import SignalSnapshot
 
 
 def _processor() -> CameraProcessor | None:
@@ -47,7 +47,7 @@ def _render_alarm_notification() -> None:
             sessionStorage.setItem("livesense-last-alarm", String(now));
             if (window.Notification && Notification.permission === "granted") {
               new Notification("LiveSense sleep alarm", {
-                body: "Possible sleep detected. Wake the monitored person immediately.",
+                body: "Sleep detected. Pull over now and stop in a safe place.",
                 requireInteraction: true
               });
             }
@@ -158,53 +158,67 @@ def _sparkline(values: list[float], color: str) -> str:
     ).strip()
 
 
-@st.fragment(run_every=2.0)
+@st.fragment(run_every=0.5)
 def _render_status_banner() -> None:
     current, _, _ = _live_view()
-    quality = _quality_label(current.signal_quality)
     if current.alarm_active:
         st.markdown(
             """
-            <div class="alarm-banner">
+            <div class="notice-banner notice-danger">
               <span class="alarm-pulse">!</span>
-              <div><strong>SLEEP DETECTED — WAKE UP</strong><br>
-              Sustained eye closure triggered the LiveSense alarm.</div>
+              <div><strong>DANGER: PULL OVER NOW - SLEEP DETECTED</strong><br>
+              Stop driving, move to a safe place, and rest before continuing.</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
         _render_alarm_notification()
-        icon = "!"
-        copy = "Critical sleep cues detected. Wake the monitored person immediately."
-    elif current.sleep_state in {"Dozing", "Drowsy"}:
-        icon = "!"
-        copy = "Drowsiness cues are increasing. Take a break and restore alertness."
-    elif current.cough_detected:
-        icon = "!"
-        copy = "A suspected cough audio burst was detected and added to events."
+        return
+    if current.phone_at_ear:
+        st.markdown(
+            """
+            <div class="notice-banner notice-warning">
+              <span class="notice-icon">!</span>
+              <div><strong>PHONE USE DETECTED</strong><br>
+              Put the phone down and keep both hands available for safe driving.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+    if current.sleep_state in {"Dozing", "Drowsy"}:
+        st.markdown(
+            """
+            <div class="notice-banner notice-warning">
+              <span class="notice-icon">!</span>
+              <div><strong>DROWSINESS WARNING</strong><br>
+              Pull over at the next safe place and take a break.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+
+    quality = _quality_label(current.signal_quality)
+    if current.driver_status == "Camera Ready":
+        copy = "Start the camera to begin monitoring."
     elif current.driver_status == "Normal":
-        icon = "✓"
-        copy = "Person appears awake and attentive. Continue monitoring for changes."
-    elif current.driver_status == "Camera Ready":
-        icon = "◦"
-        copy = "Start the camera to begin live human-signal monitoring."
+        copy = "No danger signal detected."
     else:
-        icon = "!"
         copy = f"Live activity: {current.activity}. Keep the face visible and centered."
     st.markdown(
         f"""
         <div class="status-banner">
-            <div class="status-icon">{icon}</div>
-            <div>
+          <div class="status-icon">&#10003;</div>
+          <div>
             <div class="status-title">Monitoring Status: {escape(current.driver_status)}</div>
             <div class="status-copy">{escape(copy)}</div>
           </div>
           <div class="quality">
             <div class="quality-row">
               <span class="quality-label">Signal Quality</span>
-              <span class="quality-value">{quality} · {current.signal_quality:.0f}%</span>
+              <span class="quality-value">{quality} - {current.signal_quality:.0f}%</span>
             </div>
-            <div class="quality-copy">Camera signal is visible and processed in memory.</div>
           </div>
         </div>
         """,
@@ -212,22 +226,22 @@ def _render_status_banner() -> None:
     )
 
 
-@st.fragment(run_every=2.0)
+@st.fragment(run_every=1.0)
 def _render_metrics() -> None:
     current, _, _ = _live_view()
     sleep_state = current.sleep_state
     sleep_color = "#d94c45" if current.alarm_active else "#d59522"
     attention_state = "Stable" if current.attention >= 65 else "Needs attention"
     readiness_state = "Ready" if current.readiness >= 65 else "Building signal"
-    audio_state = "Cough cue" if current.cough_detected else f"{current.cough_count} cough events"
+    phone_state = "Phone at ear" if current.phone_at_ear else "Clear"
     if current.activity == "Waiting for camera":
-        recommendation = "Start camera and microphone monitoring to begin analysis."
+        recommendation = "Start camera monitoring to begin analysis."
     elif current.alarm_active:
         recommendation = "Wake the monitored person immediately and move to a safe condition."
     elif current.sleep_state in {"Dozing", "Drowsy"}:
         recommendation = "Drowsiness detected. Pause the activity and take a restorative break."
-    elif current.cough_detected:
-        recommendation = "Suspected cough detected. Continue observing frequency and wellbeing."
+    elif current.phone_at_ear:
+        recommendation = "Put the phone down and keep your attention on the road."
     elif current.activity == "Attentive":
         recommendation = "Continue monitoring. Keep your face visible and posture upright."
     elif current.activity == "No face":
@@ -246,7 +260,7 @@ def _render_metrics() -> None:
           <span>Sleep: <strong>{escape(current.sleep_state)}</strong></span>
           <span>Eyes: <strong>{"Closed" if current.eyes_closed else "Open"}</strong></span>
           <span>Yawn: <strong>{"Yes" if current.yawning else "No"}</strong></span>
-          <span>Coughs: <strong>{current.cough_count}</strong></span>
+          <span>Phone: <strong>{"Detected" if current.phone_at_ear else "Clear"}</strong></span>
         </div>
         <div class="recommendation">
           <div class="recommendation-icon">RA</div>
@@ -265,7 +279,12 @@ def _render_metrics() -> None:
         + _metric("Drowsiness", current.drowsiness, sleep_state, sleep_color)
         + _metric("Attention", current.attention, attention_state, "#d94c45")
         + _metric("Readiness", current.readiness, readiness_state, "#d59522")
-        + _metric("Audio Activity", current.audio_level, audio_state, "#139d70")
+        + _metric(
+            "Phone Use",
+            100.0 if current.phone_at_ear else 0.0,
+            phone_state,
+            "#d94c45" if current.phone_at_ear else "#139d70",
+        )
         + "</div>"
         + recommendation_html
         + "</div>"
@@ -273,7 +292,7 @@ def _render_metrics() -> None:
     st.markdown(html, unsafe_allow_html=True)
 
 
-@st.fragment(run_every=2.0)
+@st.fragment(run_every=1.0)
 def _render_events() -> None:
     _, _, events = _live_view()
     items = []
@@ -281,7 +300,8 @@ def _render_events() -> None:
         observed = datetime.fromtimestamp(event.timestamp).strftime("%H:%M:%S")
         event_class = " event-critical" if event.level == "critical" else ""
         items.append(
-            f"""
+            dedent(
+                f"""
             <div class="event-item">
               <div class="event-dot{event_class}"></div>
               <div>
@@ -290,13 +310,16 @@ def _render_events() -> None:
               </div>
             </div>
             """
+            ).strip()
         )
     if not items:
         items.append(
-            """
+            dedent(
+                """
             <div class="event-empty"><strong>No active events</strong><br>
               The current frame has no actionable activity changes.</div>
             """
+            ).strip()
         )
     st.markdown(
         '<div class="panel"><div class="panel-head">'
@@ -306,7 +329,7 @@ def _render_events() -> None:
     )
 
 
-@st.fragment(run_every=5.0)
+@st.fragment(run_every=3.0)
 def _render_trends() -> None:
     _, history, _ = _live_view()
     chart_data = [
@@ -318,10 +341,10 @@ def _render_trends() -> None:
         ),
         ("Attention Trend", "Attention", [point.attention for point in history], "#dc982b"),
         (
-            "Audio Activity",
-            "Microphone level",
-            [point.audio_level for point in history],
-            "#159d75",
+            "Phone Use",
+            "Hand-at-ear warning",
+            [100.0 if point.phone_at_ear else 0.0 for point in history],
+            "#d85b55",
         ),
     ]
     columns = st.columns(3, gap="small")
@@ -372,10 +395,16 @@ def _render_sidebar() -> None:
         st.session_state.reset_requested = True
 
     st.markdown('<div class="side-section">CONTEXT</div>', unsafe_allow_html=True)
-    st.selectbox("Mode", ["General", "Driver", "Desk work", "Care"], label_visibility="visible")
+    st.selectbox(
+        "Mode",
+        ["General", "Driver", "Desk work", "Care"],
+        index=1,
+        label_visibility="visible",
+    )
     st.selectbox(
         "Monitoring Context",
         ["Chair", "Standing", "Vehicle", "Bed"],
+        index=2,
         label_visibility="visible",
     )
     st.toggle(
@@ -383,12 +412,6 @@ def _render_sidebar() -> None:
         key="privacy_blur",
         help="Blur the detected face after live signals are calculated.",
     )
-    st.toggle(
-        "Cough audio analysis",
-        key="audio_analysis",
-        help="Use microphone audio to flag short bursts consistent with coughing.",
-    )
-
     st.markdown('<div class="side-section">ALARMS</div>', unsafe_allow_html=True)
     _render_notification_permission()
 
@@ -416,22 +439,14 @@ def render_dashboard() -> None:
         "reset_requested": False,
         "latest_feedback": "None",
         "privacy_blur": False,
-        "audio_analysis": True,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
-    if not isinstance(st.session_state.get("audio_detector"), AudioActivityDetector):
-        st.session_state.audio_detector = AudioActivityDetector()
-
     with st.sidebar:
         _render_sidebar()
 
-    # WebRTC creates its processor outside the Streamlit script callback. Capture
-    # widget state here instead of reading session_state from that worker context.
     privacy_blur = bool(st.session_state.get("privacy_blur", False))
-    audio_analysis = bool(st.session_state.get("audio_analysis", True))
-    audio_detector = st.session_state.audio_detector
 
     st.markdown(
         '<div class="topbar"><span class="user-chip">↑ &nbsp; '
@@ -456,20 +471,17 @@ def render_dashboard() -> None:
                     mirrored=settings.camera.mirrored,
                     show_fps=settings.camera.show_fps,
                     privacy_blur=privacy_blur,
-                    audio_detector=audio_detector,
                     dozing_seconds=settings.monitoring.dozing_seconds,
                     sleeping_seconds=settings.monitoring.sleeping_seconds,
                 ),
-                audio_processor_factory=(
-                    (lambda: AudioActivityProcessor(audio_detector)) if audio_analysis else None
-                ),
+                audio_processor_factory=None,
                 media_stream_constraints={
                     "video": {
                         "width": {"ideal": settings.camera.width},
                         "height": {"ideal": settings.camera.height},
                         "frameRate": {"ideal": settings.camera.target_fps},
                     },
-                    "audio": audio_analysis,
+                    "audio": False,
                 },
                 video_html_attrs={"autoPlay": True, "controls": False, "muted": True},
                 media_toggle_controls=False,
