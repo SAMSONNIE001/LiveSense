@@ -45,6 +45,7 @@ class CameraProcessor:
         self._show_fps = show_fps
         self._privacy_blur = privacy_blur
         self._settings_lock = Lock()
+        self._process_lock = Lock()
         self._fps = FPSMeter()
         self.session = SignalSession()
         self._drowsiness = DrowsinessMonitor(
@@ -127,12 +128,21 @@ class CameraProcessor:
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         image = frame.to_ndarray(format="bgr24")
+        self.process_image(image)
+        return av.VideoFrame.from_ndarray(image, format="bgr24")
+
+    def process_image(self, image: np.ndarray) -> SignalSnapshot:
+        """Analyze one BGR camera frame and publish its latest safety signals."""
+        with self._process_lock:
+            return self._process_image_locked(image)
+
+    def _process_image_locked(self, image: np.ndarray) -> SignalSnapshot:
         fps = self._fps.tick()
         with self._settings_lock:
             mirrored = self._mirrored
             privacy_blur = self._privacy_blur
         if mirrored:
-            image = np.ascontiguousarray(image[:, ::-1])
+            image[:] = image[:, ::-1].copy()
 
         analysis_image, scale_x, scale_y = self._analysis_frame(image)
         snapshot = self._analyze(analysis_image, fps)
@@ -149,7 +159,7 @@ class CameraProcessor:
             display_face = None
         if privacy_blur and display_face is not None:
             self._blur_face(image, display_face)
-        return av.VideoFrame.from_ndarray(image, format="bgr24")
+        return snapshot
 
     @staticmethod
     def _analysis_frame(image: np.ndarray, max_width: int = 480) -> tuple[np.ndarray, float, float]:

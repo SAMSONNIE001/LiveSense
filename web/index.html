@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LiveSense Safety Monitor</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">LS</span><div><strong>LiveSense</strong><small>Human Activity &amp; Safety Monitoring</small></div></div>
+      <nav>
+        <a class="active">◆ Dashboard</a><a>▣ Live Feed</a><a>◷ Sessions</a><a>⇅ Analytics</a>
+        <a>⚠ Alerts <b id="nav-alerts">0</b></a><a>☷ Reports</a><a>⇧ Export Data</a><a>⚙ Settings</a>
+      </nav>
+      <p class="section-label">QUICK ACTIONS</p>
+      <button id="camera-button" class="primary">Start Camera</button>
+      <button id="calibrate-button">Calibrate (10s)</button>
+      <button id="reset-button">Start New Session</button>
+      <button id="notifications-button">Enable Alarm Notifications</button>
+      <p class="section-label">SYSTEM STATUS</p>
+      <div class="system-status"><i></i><span id="system-status">Server connected</span></div>
+      <div class="user-card"><span></span><div><strong>Admin User</strong><small>Administrator</small></div></div>
+      <small class="disclaimer">Visual safety estimates only</small>
+    </aside>
+
+    <main>
+      <header class="console-header">
+        <div class="monitoring"><i></i><span><strong>Monitoring Active</strong><small id="monitoring-copy">Start the camera to begin analysis</small></span></div>
+        <div class="console-stat"><small>Camera</small><strong id="camera-state">Off</strong></div>
+        <div class="console-stat"><small>Resolution</small><strong>640 × 360</strong></div>
+        <div class="console-stat"><small>FPS</small><strong id="header-fps">0</strong></div>
+        <div class="console-stat"><small>Uptime</small><strong id="uptime">00:00:00</strong></div>
+        <div class="clock"><small id="date"></small><strong id="time"></strong></div>
+      </header>
+
+      <section id="notice" class="notice normal"><span>✓</span><div><strong>MONITORING READY</strong><small>Start the camera for live safety analysis.</small></div></section>
+
+      <section class="dashboard-grid top-grid">
+        <article class="panel camera-panel">
+          <div class="panel-head"><strong>LIVE CAMERA FEED</strong><span class="live">● LIVE</span></div>
+          <div class="video-shell">
+            <video id="camera" autoplay muted playsinline></video>
+            <canvas id="overlay"></canvas>
+            <div id="camera-placeholder">Select Start Camera and allow camera access</div>
+            <div id="tracking-badge">● SEARCHING FOR FACE + ARMS</div>
+          </div>
+          <div class="camera-controls"><button id="snapshot-button">◎</button><button id="mini-stop">■</button><button>Ⅱ</button><button>⌂</button></div>
+        </article>
+
+        <section class="signals-stack">
+          <article class="panel">
+            <div class="panel-head"><strong>KEY SIGNALS</strong><span id="signal-fps">0 FPS</span></div>
+            <div id="signal-cards" class="signal-cards"></div>
+          </article>
+          <article class="panel compact"><div class="panel-head"><strong>ACTIVITY STATUS</strong></div><div id="activity-list" class="activity-list"></div></article>
+        </section>
+
+        <section class="right-stack">
+          <article class="panel quality-panel"><div class="panel-head"><strong>SIGNAL QUALITY</strong></div><div class="gauge" id="quality-gauge"><strong>0%</strong><small>Waiting</small></div><div id="quality-list" class="quality-list"></div></article>
+          <article class="panel timeline-panel"><div class="panel-head"><strong>EVENT TIMELINE</strong><span>View all</span></div><div id="events" class="events"><p>No events yet</p></div></article>
+        </section>
+      </section>
+
+      <section class="dashboard-grid chart-grid">
+        <article class="panel chart-panel"><div class="panel-head"><strong>ACTIVITY OVER TIME</strong><span>Live</span></div><div id="activity-legend" class="legend"></div><canvas id="activity-chart"></canvas></article>
+        <article class="panel chart-panel"><div class="panel-head"><strong>DROWSINESS &amp; YAWNING</strong><span>Live</span></div><div id="drowsy-legend" class="legend"></div><canvas id="drowsy-chart"></canvas></article>
+        <article class="panel summary-panel"><div class="panel-head"><strong>SESSION SUMMARY</strong></div><div id="summary"></div></article>
+      </section>
+
+      <footer>◇ <strong>TIP</strong> Keep good lighting and a clear view of the face, shoulders, hands, food, drink, and phone.</footer>
+    </main>
+  </div>
+  <canvas id="capture" width="480" height="270" hidden></canvas>
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

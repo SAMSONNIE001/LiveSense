@@ -145,7 +145,7 @@ class SignalSession:
             self._face_missing_warning = snapshot.face_missing_warning
 
     def snapshot(self) -> SessionView:
-        """Return a consistent view for the Streamlit rendering thread."""
+        """Return a consistent view for the live API rendering thread."""
         with self._lock:
             return SessionView(self._current, tuple(self._history), tuple(self._events))
 

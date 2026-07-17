@@ -98,7 +98,7 @@ class AudioActivityDetector:
 
 
 class AudioActivityProcessor:
-    """WebRTC audio processor that publishes analysis and returns input frames."""
+    """Optional audio-frame adapter that publishes analysis and returns input frames."""
 
     def __init__(self, detector: AudioActivityDetector) -> None:
         self.detector = detector

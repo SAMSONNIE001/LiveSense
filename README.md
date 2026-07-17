@@ -1,29 +1,20 @@
 # LiveSense
 
-**Real-time Human Signal Intelligence using Computer Vision.**
+Real-time human activity and driver-safety monitoring with a FastAPI/Uvicorn
+server and a browser-owned camera.
 
-LiveSense is a privacy-conscious driver-state monitoring dashboard that performs
-low-latency local camera analysis. It monitors awake, drowsy, dozing, sleeping,
-attention, movement, object-assisted phone use, eating, drinking, seat-belt,
-and missing-face signals.
+## Capabilities
 
-## Current capabilities
-
-- Browser-based webcam capture (no server-side camera access required)
-- MediaPipe face landmarks for eye closure, yawning, and head-angle cues
-- Duration-based `Awake`, `Drowsy`, `Dozing`, and `Sleeping` state machine
-- Two-hand MediaPipe tracking plus EfficientDet-Lite0 for phone-at-ear and
-  phone-in-hand warnings
-- Eating, drinking, seat-belt-not-confirmed, and missing-face observations
-- Upper-body object cropping to improve small phone, cup, bottle, food, and
-  utensil detection near the driver
-- Critical sleep event with a red pull-over warning, audible alarm, and notification
-- Zero-round-trip browser preview with conditions shown in the top warning banner
-- Rolling drowsiness, attention, and phone-use trends
-- Camera, calibration, feedback, and session controls
-- Configurable video and dashboard settings
-- Bundled official MediaPipe face and hand landmarker models for offline runtime use
-- Automated unit tests
+- Fast static replica dashboard served by FastAPI
+- One browser camera stream; no duplicate server-side camera capture
+- Backpressure-aware WebSocket analysis with no stale-frame queue
+- MediaPipe eye closure, yawning, face and hand landmarks
+- Rapid dozing and sleep alarm state machine
+- Phone-at-ear and phone-in-hand detection
+- Eating, drinking, seat-belt and missing-face observations
+- Live face box, shoulder/arm overlay, charts, event timeline and session summary
+- Browser notification and audible sleep alarm
+- In-memory processing only; frames are not recorded or persisted
 
 ## Quick start
 
@@ -34,17 +25,19 @@ python -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -e ".[dev]"
-streamlit run app.py
+uvicorn app:app --host 127.0.0.1 --port 8501
 ```
 
-Open the local URL displayed by Streamlit, select **Start Camera**, and allow
-camera access. Select **Enable alarm notifications** in the sidebar if you want
-operating-system browser notifications. Camera permission requires `localhost`
-or an HTTPS deployment. LiveSense does not request microphone access.
+Open <http://localhost:8501>, select **Start Camera**, and allow camera access.
+Camera permission requires localhost or an HTTPS deployment. LiveSense does not
+request microphone access.
 
-Sleep timing can be adjusted in `config/settings.yaml`. The default begins a
-yellow dozing warning after 1.1 seconds of sustained closure and activates the
-red sleep alarm after 3 seconds.
+## API
+
+- `GET /` — dashboard
+- `GET /health` — server health
+- `WS /ws/analyze` — binary JPEG frames in, JSON signals out
+- `GET /api/docs` — FastAPI API documentation
 
 ## Test
 
@@ -55,29 +48,20 @@ pytest
 ## Project structure
 
 ```text
-app.py                 Streamlit entry point
-camera/                Browser video processing and camera state
-dashboard/             UI composition and visual theme
+app.py                 FastAPI application and analysis WebSocket
+web/                   Static HTML, CSS and JavaScript dashboard
+camera/                Frame processing and safety-signal coordination
 config/                YAML configuration and typed settings
-vision/                MediaPipe face and hand landmark pipelines
+vision/                MediaPipe face, hand and object pipelines
 signals/               Drowsiness and shared signal state machines
-analytics/             Session history, events, and interpretation
-events/                Application event models
-reports/               Report generation
-utils/                 Shared utilities such as FPS measurement
+analytics/             Session history and event interpretation
 tests/                 Automated tests
-docs/                  Architecture and roadmap documentation
 ```
 
-See [docs/architecture.md](docs/architecture.md) for the design and extension
-points, and [docs/roadmap.md](docs/roadmap.md) for upcoming milestones.
+## Safety and privacy
 
-## Privacy
-
-LiveSense processes video frames in memory and does not record or persist them.
-Sleep, drowsiness, yawning, phone-use, eating, drinking, and seat-belt results
-are automated visual cues, not definitive safety or medical diagnoses or
-substitutes for human supervision or certified safety systems.
+LiveSense processes compressed frames in memory and does not save them. Results
+are automated visual estimates, not certified driver-safety or medical diagnoses.
 
 ## License
 
