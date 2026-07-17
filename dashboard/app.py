@@ -136,6 +136,8 @@ def _render_local_camera_preview(active: bool) -> None:
     preview_html = """
         <div id="livesense-preview-shell">
           <video id="livesense-preview" autoplay muted playsinline></video>
+          <canvas id="livesense-face-overlay"></canvas>
+          <div id="livesense-detection-badge"><span></span>FACE TRACKING</div>
           <div id="livesense-preview-state">Start camera for live monitoring</div>
         </div>
         <style>
@@ -147,18 +149,172 @@ def _render_local_camera_preview(active: bool) -> None:
             display: block; width: 100%; height: 100%; object-fit: cover;
             transform: scaleX(-1);
           }
+          #livesense-face-overlay {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            pointer-events: none;
+          }
+          #livesense-detection-badge {
+            position: absolute; top: 9px; left: 9px; display: none;
+            align-items: center; gap: 5px; padding: 4px 7px;
+            border: 1px solid rgba(30, 226, 166, .45); border-radius: 4px;
+            background: rgba(3, 16, 25, .8); color: #55efbd;
+            font: 700 9px "Segoe UI", sans-serif; letter-spacing: .04em;
+          }
+          #livesense-detection-badge span {
+            width: 6px; height: 6px; border-radius: 50%; background: #20e3a3;
+            box-shadow: 0 0 7px rgba(32, 227, 163, .9);
+          }
+          #livesense-detection-badge.searching {
+            border-color: rgba(241, 163, 31, .45); color: #ffc55d;
+          }
+          #livesense-detection-badge.searching span {
+            background: #f1a31f; box-shadow: 0 0 7px rgba(241, 163, 31, .8);
+          }
           #livesense-preview-state {
             position: absolute; inset: 0; display: grid; place-items: center;
             color: white; background: #17201e; font: 12px "Segoe UI", sans-serif;
           }
         </style>
-        <script>
+        <script type="module">
           const preview = document.getElementById("livesense-preview");
+          const overlay = document.getElementById("livesense-face-overlay");
+          const overlayContext = overlay.getContext("2d");
+          const detectionBadge = document.getElementById("livesense-detection-badge");
           const state = document.getElementById("livesense-preview-state");
           const active = __LIVESENSE_ACTIVE__;
           let previewStream = null;
+          let faceLandmarker = null;
+          let lastVideoTime = -1;
+          let lastInferenceAt = 0;
+          let overlayRunning = true;
           const stopPreview = () => {
+            overlayRunning = false;
+            if (faceLandmarker) faceLandmarker.close();
             if (previewStream) previewStream.getTracks().forEach((track) => track.stop());
+          };
+          const setBadge = (detected, text) => {
+            detectionBadge.style.display = "flex";
+            detectionBadge.classList.toggle("searching", !detected);
+            detectionBadge.lastChild.textContent = text;
+          };
+          const syncOverlaySize = () => {
+            overlay.width = Math.max(1, Math.round(preview.clientWidth));
+            overlay.height = Math.max(1, Math.round(preview.clientHeight));
+          };
+          const drawFace = (landmarks) => {
+            const width = overlay.width;
+            const height = overlay.height;
+            const videoWidth = preview.videoWidth || width;
+            const videoHeight = preview.videoHeight || height;
+            const coverScale = Math.max(width / videoWidth, height / videoHeight);
+            const shownWidth = videoWidth * coverScale;
+            const shownHeight = videoHeight * coverScale;
+            const offsetX = (width - shownWidth) / 2;
+            const offsetY = (height - shownHeight) / 2;
+            const points = landmarks.map((point) => ({
+              x: width - (offsetX + point.x * shownWidth),
+              y: offsetY + point.y * shownHeight
+            }));
+            const xs = points.map((point) => point.x);
+            const ys = points.map((point) => point.y);
+            const paddingX = width * .025;
+            const paddingY = height * .035;
+            const left = Math.max(2, Math.min(...xs) - paddingX);
+            const right = Math.min(width - 2, Math.max(...xs) + paddingX);
+            const top = Math.max(2, Math.min(...ys) - paddingY);
+            const bottom = Math.min(height - 2, Math.max(...ys) + paddingY);
+            const corner = Math.min(22, (right - left) * .18);
+
+            overlayContext.strokeStyle = "#22e5ad";
+            overlayContext.lineWidth = 2;
+            overlayContext.shadowColor = "rgba(34, 229, 173, .75)";
+            overlayContext.shadowBlur = 5;
+            const corners = [
+              [left + corner, top, left, top, left, top + corner],
+              [right - corner, top, right, top, right, top + corner],
+              [left, bottom - corner, left, bottom, left + corner, bottom],
+              [right, bottom - corner, right, bottom, right - corner, bottom]
+            ];
+            for (const line of corners) {
+              overlayContext.beginPath();
+              overlayContext.moveTo(line[0], line[1]);
+              overlayContext.lineTo(line[2], line[3]);
+              overlayContext.lineTo(line[4], line[5]);
+              overlayContext.stroke();
+            }
+            overlayContext.shadowBlur = 0;
+            overlayContext.fillStyle = "rgba(49, 213, 239, .72)";
+            for (let index = 0; index < points.length; index += 7) {
+              const point = points[index];
+              overlayContext.beginPath();
+              overlayContext.arc(point.x, point.y, 1.15, 0, Math.PI * 2);
+              overlayContext.fill();
+            }
+            const keyPoints = [1, 10, 33, 61, 133, 152, 263, 291, 362];
+            overlayContext.fillStyle = "#5af0ff";
+            for (const index of keyPoints) {
+              const point = points[index];
+              if (!point) continue;
+              overlayContext.beginPath();
+              overlayContext.arc(point.x, point.y, 2.1, 0, Math.PI * 2);
+              overlayContext.fill();
+            }
+            overlayContext.fillStyle = "rgba(3, 18, 27, .86)";
+            overlayContext.fillRect(left, Math.max(0, top - 17), 79, 15);
+            overlayContext.fillStyle = "#55efbd";
+            overlayContext.font = '700 9px "Segoe UI", sans-serif';
+            overlayContext.fillText("FACE DETECTED", left + 5, Math.max(11, top - 6));
+          };
+          const trackFace = () => {
+            if (!overlayRunning) return;
+            const now = performance.now();
+            if (
+              faceLandmarker && preview.readyState >= 2 &&
+              preview.currentTime !== lastVideoTime && now - lastInferenceAt >= 110
+            ) {
+              lastVideoTime = preview.currentTime;
+              lastInferenceAt = now;
+              const result = faceLandmarker.detectForVideo(preview, now);
+              overlayContext.clearRect(0, 0, overlay.width, overlay.height);
+              if (result.faceLandmarks && result.faceLandmarks.length) {
+                drawFace(result.faceLandmarks[0]);
+                setBadge(true, "FACE DETECTED");
+              } else {
+                setBadge(false, "SEARCHING FOR FACE");
+              }
+            }
+            requestAnimationFrame(trackFace);
+          };
+          const initialiseFaceOverlay = async () => {
+            try {
+              const vision = await import(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/+esm"
+              );
+              const files = await vision.FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm"
+              );
+              const options = {
+                baseOptions: {
+                  modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+                  delegate: "GPU"
+                },
+                runningMode: "VIDEO",
+                numFaces: 1,
+                minFaceDetectionConfidence: .55,
+                minFacePresenceConfidence: .55,
+                minTrackingConfidence: .55
+              };
+              try {
+                faceLandmarker = await vision.FaceLandmarker.createFromOptions(files, options);
+              } catch (gpuError) {
+                options.baseOptions.delegate = "CPU";
+                faceLandmarker = await vision.FaceLandmarker.createFromOptions(files, options);
+              }
+              setBadge(false, "SEARCHING FOR FACE");
+              requestAnimationFrame(trackFace);
+            } catch (error) {
+              setBadge(false, "FACE OVERLAY UNAVAILABLE");
+            }
           };
           if (active) {
             state.textContent = "Starting camera...";
@@ -171,13 +327,18 @@ def _render_local_camera_preview(active: bool) -> None:
             }).then((stream) => {
               previewStream = stream;
               preview.srcObject = stream;
-              preview.onplaying = () => { state.style.display = "none"; };
+              preview.onplaying = () => {
+                syncOverlaySize();
+                state.style.display = "none";
+                initialiseFaceOverlay();
+              };
             }).catch((error) => {
               state.textContent = `Camera unavailable: ${error.message}`;
             });
           }
           window.addEventListener("pagehide", stopPreview, { once: true });
           window.addEventListener("beforeunload", stopPreview, { once: true });
+          window.addEventListener("resize", syncOverlaySize);
         </script>
         """
     components.html(
@@ -485,13 +646,13 @@ def _activity_lane_plot(
             values = [values[0], values[0]]
         lane_top = plot_top + lane * lane_height
         baseline = lane_top + 15
-        background = "#fafcfb" if lane % 2 == 0 else "#ffffff"
+        background = "#0a1926" if lane % 2 == 0 else "#0c1c29"
         elements.append(
             f'<rect x="0" y="{lane_top}" width="1000" height="{lane_height}" fill="{background}" />'
         )
         elements.append(
             f'<line x1="{plot_left:.0f}" y1="{baseline}" x2="{plot_right:.0f}" '
-            'y2="{baseline}" stroke="#e8eeeb" stroke-width="1" />'
+            f'y2="{baseline}" stroke="#193243" stroke-width="1" />'
         )
         points = []
         for index, value in enumerate(values):
