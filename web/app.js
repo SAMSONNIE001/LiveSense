@@ -33,7 +33,11 @@ function setConnection(connected, text) {
 }
 
 function connect() {
-  if (socket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(socket.readyState)) return;
+  if (socket?.readyState === WebSocket.OPEN) {
+    if (cameraActive) scheduleFrame();
+    return;
+  }
+  if (socket?.readyState === WebSocket.CONNECTING) return;
   const protocol = location.protocol === "https:" ? "wss" : "ws";
   socket = new WebSocket(`${protocol}://${location.host}/ws/analyze`);
   socket.binaryType = "arraybuffer";
@@ -83,6 +87,7 @@ async function startCamera() {
     $("#camera-state").textContent = "Live";
     $("#monitoring-copy").textContent = "AI systems are running smoothly";
     connect();
+    if (socket?.readyState === WebSocket.OPEN) scheduleFrame();
     initializePose();
     requestAnimationFrame(trackPose);
   } catch (error) {

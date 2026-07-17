@@ -20,6 +20,7 @@ def test_static_dashboard_contains_camera_and_live_signal_client() -> None:
     assert "/ws/analyze" in javascript
     assert "getUserMedia" in javascript
     assert "PoseLandmarker" in javascript
+    assert "if (cameraActive) scheduleFrame()" in javascript
 
 
 def test_invalid_image_payload_is_rejected() -> None:
@@ -32,4 +33,5 @@ def test_web_assets_exist() -> None:
         "index.html",
         "styles.css",
         "app.js",
+        "favicon.svg",
     }

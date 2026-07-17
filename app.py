@@ -65,6 +65,11 @@ async def dashboard() -> FileResponse:
     return FileResponse(WEB_ROOT / "index.html")
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> FileResponse:
+    return FileResponse(WEB_ROOT / "favicon.svg", media_type="image/svg+xml")
+
+
 @app.get("/health", include_in_schema=False)
 async def health() -> dict[str, str]:
     return {"status": "ok"}
