@@ -7,6 +7,7 @@ from html import escape
 from textwrap import dedent
 
 import streamlit as st
+import streamlit.components.v1 as components
 from streamlit_webrtc import WebRtcMode, webrtc_streamer
 
 from camera import CameraProcessor
@@ -38,20 +39,22 @@ def _quality_label(value: float) -> str:
 
 def _render_alarm_notification() -> None:
     """Emit one browser notification and audible alarm per sleep episode."""
-    st.html(
+    components.html(
         """
         <script>
-          const active = sessionStorage.getItem("livesense-alarm-active") === "true";
+          let host = window;
+          try { if (window.parent.document) host = window.parent; } catch (error) {}
+          const active = host.sessionStorage.getItem("livesense-alarm-active") === "true";
           if (!active) {
-            sessionStorage.setItem("livesense-alarm-active", "true");
-            if (window.Notification && Notification.permission === "granted") {
-              window.__livesenseAlarmNotification = new Notification("LiveSense sleep alarm", {
+            host.sessionStorage.setItem("livesense-alarm-active", "true");
+            if (host.Notification && host.Notification.permission === "granted") {
+              host.__livesenseAlarmNotification = new host.Notification("LiveSense sleep alarm", {
                 body: "Sleep detected. Pull over now and stop in a safe place.",
                 requireInteraction: true,
                 tag: "livesense-sleep-warning"
               });
             }
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            const AudioContext = host.AudioContext || host.webkitAudioContext;
             if (AudioContext) {
               const context = new AudioContext();
               [0, 0.35, 0.7].forEach((delay) => {
@@ -71,27 +74,31 @@ def _render_alarm_notification() -> None:
           }
         </script>
         """,
-        unsafe_allow_javascript=True,
+        height=0,
+        scrolling=False,
     )
 
 
 def _clear_alarm_notification() -> None:
-    st.html(
+    components.html(
         """
         <script>
-          sessionStorage.setItem("livesense-alarm-active", "false");
-          if (window.__livesenseAlarmNotification) {
-            window.__livesenseAlarmNotification.close();
-            window.__livesenseAlarmNotification = null;
+          let host = window;
+          try { if (window.parent.document) host = window.parent; } catch (error) {}
+          host.sessionStorage.setItem("livesense-alarm-active", "false");
+          if (host.__livesenseAlarmNotification) {
+            host.__livesenseAlarmNotification.close();
+            host.__livesenseAlarmNotification = null;
           }
         </script>
         """,
-        unsafe_allow_javascript=True,
+        height=0,
+        scrolling=False,
     )
 
 
 def _render_notification_permission() -> None:
-    st.html(
+    components.html(
         """
         <div id="livesense-alert-widget">
           <button id="alerts">Enable alarm notifications</button>
@@ -110,23 +117,26 @@ def _render_notification_permission() -> None:
           }
         </style>
         <script>
+          let host = window;
+          try { if (window.parent.document) host = window.parent; } catch (error) {}
           const state = document.getElementById("state");
           const button = document.getElementById("alerts");
           const show = () => {
-            state.textContent = window.Notification
-              ? `Notification permission: ${Notification.permission}`
+            state.textContent = host.Notification
+              ? `Notification permission: ${host.Notification.permission}`
               : "Browser notifications unavailable";
           };
           button.onclick = async () => {
-            if (window.Notification) await Notification.requestPermission();
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (host.Notification) await host.Notification.requestPermission();
+            const AudioContext = host.AudioContext || host.webkitAudioContext;
             if (AudioContext) { const context = new AudioContext(); await context.resume(); }
             show();
           };
           show();
         </script>
         """,
-        unsafe_allow_javascript=True,
+        height=58,
+        scrolling=False,
     )
 
 
@@ -181,24 +191,26 @@ def _render_local_camera_preview(active: bool) -> None:
           const detectionBadge = document.getElementById("livesense-detection-badge");
           const state = document.getElementById("livesense-preview-state");
           const active = __LIVESENSE_ACTIVE__;
+          let host = window;
+          try { if (window.parent.document) host = window.parent; } catch (error) {}
           const runId = `${Date.now()}-${Math.random()}`;
-          window.__livesensePreviewRunId = runId;
-          let previewStream = window.__livesensePreviewStream || null;
-          let poseLandmarker = window.__livesensePoseLandmarker || null;
+          host.__livesensePreviewRunId = runId;
+          let previewStream = host.__livesensePreviewStream || null;
+          let poseLandmarker = host.__livesensePoseLandmarker || null;
           let trackingBusy = false;
           let lastVideoTime = -1;
           let lastInferenceAt = 0;
           let overlayRunning = true;
           const stopPreview = () => {
             overlayRunning = false;
-            window.__livesensePreviewRunId = null;
+            host.__livesensePreviewRunId = null;
             if (poseLandmarker) {
               poseLandmarker.close();
-              window.__livesensePoseLandmarker = null;
+              host.__livesensePoseLandmarker = null;
               poseLandmarker = null;
             }
             if (previewStream) previewStream.getTracks().forEach((track) => track.stop());
-            window.__livesensePreviewStream = null;
+            host.__livesensePreviewStream = null;
             previewStream = null;
           };
           const setBadge = (detected, text) => {
@@ -273,7 +285,7 @@ def _render_local_camera_preview(active: bool) -> None:
           const trackBody = () => {
             if (
               !overlayRunning ||
-              window.__livesensePreviewRunId !== runId
+              host.__livesensePreviewRunId !== runId
             ) return;
             const now = performance.now();
             if (
@@ -325,7 +337,7 @@ def _render_local_camera_preview(active: bool) -> None:
                 options.baseOptions.delegate = "CPU";
                 poseLandmarker = await vision.PoseLandmarker.createFromOptions(files, options);
               }
-              window.__livesensePoseLandmarker = poseLandmarker;
+              host.__livesensePoseLandmarker = poseLandmarker;
               setBadge(false, "SEARCHING FOR FACE + ARMS");
               requestAnimationFrame(trackBody);
             } catch (error) {
@@ -334,7 +346,7 @@ def _render_local_camera_preview(active: bool) -> None:
           };
           const attachPreview = (stream) => {
             previewStream = stream;
-            window.__livesensePreviewStream = stream;
+            host.__livesensePreviewStream = stream;
             preview.srcObject = stream;
             preview.onplaying = () => {
               syncOverlaySize();
@@ -362,13 +374,22 @@ def _render_local_camera_preview(active: bool) -> None:
           } else {
             stopPreview();
           }
-          window.addEventListener("beforeunload", stopPreview, { once: true });
+          if (!host.__livesenseCleanupBound) {
+            host.__livesenseCleanupBound = true;
+            host.addEventListener("beforeunload", () => {
+              const stream = host.__livesensePreviewStream;
+              if (stream) stream.getTracks().forEach((track) => track.stop());
+              const landmarker = host.__livesensePoseLandmarker;
+              if (landmarker) landmarker.close();
+            }, { once: true });
+          }
           window.addEventListener("resize", syncOverlaySize);
         </script>
         """
-    st.html(
+    components.html(
         preview_html.replace("__LIVESENSE_ACTIVE__", "true" if active else "false"),
-        unsafe_allow_javascript=True,
+        height=260,
+        scrolling=False,
     )
 
 
@@ -415,9 +436,10 @@ def _sparkline(values: list[float], color: str) -> str:
     ).strip()
 
 
-@st.fragment(run_every=0.2)
+@st.fragment(run_every=0.3)
 def _render_status_banner() -> None:
     current, _, _ = _live_view()
+    alarm_was_active = bool(st.session_state.get("alarm_was_active", False))
     if current.alarm_active:
         st.markdown(
             """
@@ -429,9 +451,13 @@ def _render_status_banner() -> None:
             """,
             unsafe_allow_html=True,
         )
-        _render_alarm_notification()
+        if not alarm_was_active:
+            _render_alarm_notification()
+        st.session_state.alarm_was_active = True
         return
-    _clear_alarm_notification()
+    if alarm_was_active:
+        _clear_alarm_notification()
+    st.session_state.alarm_was_active = False
     if current.phone_at_ear:
         st.markdown(
             """
@@ -1168,6 +1194,7 @@ def render_dashboard() -> None:
         "calibration_requested": False,
         "reset_requested": False,
         "latest_feedback": "None",
+        "alarm_was_active": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:

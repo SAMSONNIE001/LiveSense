@@ -27,7 +27,6 @@ def test_local_preview_contains_real_face_tracking_overlay() -> None:
     assert "FACE DETECTED" in source
     assert "armConnections" in source
     assert "overlayContext.arc" not in source
-    assert "st.html" in source
-    assert "window.__livesensePreviewStream" in source
-    assert "window.__livesensePoseLandmarker" in source
-    assert "components.html" not in source
+    assert "components.html" in source
+    assert "host.__livesensePreviewStream" in source
+    assert "host.__livesensePoseLandmarker" in source
