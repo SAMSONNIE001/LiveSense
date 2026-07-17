@@ -469,40 +469,123 @@ def _render_events() -> None:
     )
 
 
-@st.fragment(run_every=3.0)
+def _activity_lane_plot(
+    series: list[tuple[str, str, list[float], str]],
+) -> str:
+    """Render independent signal lanes in one compact, readable SVG plot."""
+    lane_height = 20
+    plot_top = 8
+    plot_left = 112.0
+    plot_right = 878.0
+    height = plot_top + len(series) * lane_height + 4
+    elements: list[str] = []
+    for lane, (label, state, raw_values, color) in enumerate(series):
+        values = raw_values[-60:] if raw_values else [0.0]
+        if len(values) == 1:
+            values = [values[0], values[0]]
+        lane_top = plot_top + lane * lane_height
+        baseline = lane_top + 15
+        background = "#fafcfb" if lane % 2 == 0 else "#ffffff"
+        elements.append(
+            f'<rect x="0" y="{lane_top}" width="1000" height="{lane_height}" fill="{background}" />'
+        )
+        elements.append(
+            f'<line x1="{plot_left:.0f}" y1="{baseline}" x2="{plot_right:.0f}" '
+            'y2="{baseline}" stroke="#e8eeeb" stroke-width="1" />'
+        )
+        points = []
+        for index, value in enumerate(values):
+            x = plot_left + index * (plot_right - plot_left) / (len(values) - 1)
+            y = baseline - max(0.0, min(100.0, value)) * 0.11
+            points.append(f"{x:.1f},{y:.1f}")
+        elements.append(
+            f'<polyline points="{" ".join(points)}" fill="none" stroke="{color}" '
+            'stroke-width="2" vector-effect="non-scaling-stroke" />'
+        )
+        elements.append(
+            f'<text x="8" y="{baseline - 3}" class="activity-label">{escape(label)}</text>'
+        )
+        elements.append(
+            f'<text x="992" y="{baseline - 3}" text-anchor="end" '
+            f'class="activity-state">{escape(state)}</text>'
+        )
+    return (
+        f'<svg class="activity-plot" viewBox="0 0 1000 {height}" '
+        'preserveAspectRatio="none">' + "".join(elements) + "</svg>"
+    )
+
+
+@st.fragment(run_every=1.0)
 def _render_trends() -> None:
-    _, history, _ = _live_view()
-    chart_data = [
+    current, history, _ = _live_view()
+    chart_data: list[tuple[str, str, list[float], str]] = [
         (
-            "Drowsiness Trend",
             "Sleep risk",
+            current.sleep_state,
             [point.drowsiness for point in history],
             "#d85b55",
         ),
-        ("Attention Trend", "Attention", [point.attention for point in history], "#dc982b"),
         (
-            "Phone Use",
-            "Hand-at-ear warning",
+            "Eyes closed",
+            "Yes" if current.eyes_closed else "No",
+            [100.0 if point.eyes_closed else 0.0 for point in history],
+            "#e65c55",
+        ),
+        (
+            "Yawning",
+            "Yes" if current.yawning else "No",
+            [100.0 if point.yawning else 0.0 for point in history],
+            "#a96bd5",
+        ),
+        (
+            "Attention",
+            f"{current.attention:.0f}%",
+            [point.attention for point in history],
+            "#dc982b",
+        ),
+        (
+            "Phone",
+            "Detected" if current.phone_at_ear else "Clear",
             [100.0 if point.phone_at_ear else 0.0 for point in history],
-            "#d85b55",
+            "#db514b",
+        ),
+        (
+            "Eating",
+            "Detected" if current.eating_detected else "Clear",
+            [100.0 if point.eating_detected else 0.0 for point in history],
+            "#dd7b2f",
+        ),
+        (
+            "Drinking",
+            "Detected" if current.drinking_detected else "Clear",
+            [100.0 if point.drinking_detected else 0.0 for point in history],
+            "#3186cf",
+        ),
+        (
+            "Seat belt warning",
+            "Warning" if current.seatbelt_warning else "Clear",
+            [100.0 if point.seatbelt_warning else 0.0 for point in history],
+            "#cc4f49",
+        ),
+        (
+            "Face visible",
+            "Visible" if current.face_detected else "Not detected",
+            [100.0 if point.face_detected else 0.0 for point in history],
+            "#159b72",
         ),
     ]
-    columns = st.columns(3, gap="small")
-    for column, (title, label, values, color) in zip(columns, chart_data, strict=True):
-        with column:
-            st.markdown(
-                f"""
-                <div class="trend-card">
-                  <div class="trend-meta">
-                    <span class="trend-title">{title}</span>
-                    <span class="trend-range">Last 15 min</span>
-                  </div>
-                  <div class="trend-label">{label}</div>
-                  {_sparkline(values, color)}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+    st.markdown(
+        f"""
+        <div class="trend-card activity-card">
+          <div class="trend-meta">
+            <span class="trend-title">All Activity Signals</span>
+            <span class="trend-range">Last 60 observations · updates every second</span>
+          </div>
+          {_activity_lane_plot(chart_data)}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _render_sidebar() -> None:

@@ -225,6 +225,19 @@ THEME_CSS = """
   .trend-label { color: #7f8d88; font-size: .5rem; margin: .58rem 0 .1rem; }
   .sparkline { width: 100%; height: 4rem; overflow: visible; }
   .spark-grid { stroke: #edf1ef; stroke-width: 1; }
+  .activity-card { padding-bottom: .4rem; }
+  .activity-plot {
+    display: block; width: 100%; height: 10.4rem; margin-top: .35rem;
+    overflow: visible;
+  }
+  .activity-label {
+    fill: #53645e; font-family: Inter, "Segoe UI", Arial, sans-serif;
+    font-size: 10px; font-weight: 700;
+  }
+  .activity-state {
+    fill: #75847f; font-family: Inter, "Segoe UI", Arial, sans-serif;
+    font-size: 9px; font-weight: 700;
+  }
 
   @media (max-width: 900px) {
     [data-testid="stSidebar"] { min-width: 190px; max-width: 190px; }
@@ -280,6 +293,7 @@ THEME_CSS = """
     .trend-card { padding: .4rem .5rem .2rem; }
     .trend-label { margin: .28rem 0 .05rem; }
     .sparkline { height: 2.45rem; }
+    .activity-plot { height: 7.6rem; margin-top: .18rem; }
   }
 
   @media (max-height: 680px) {
@@ -299,6 +313,7 @@ THEME_CSS = """
     video { max-height: 30vh !important; }
     [data-testid="stCustomComponentV1"] iframe { max-height: 31vh; }
     .sparkline { height: 1.8rem; }
+    .activity-plot { height: 6.5rem; }
   }
 </style>
 """
