@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LiveSense Session Report</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/reports.css">
+</head>
+<body>
+  <div class="report-shell">
+    <aside>
+      <a class="brand" href="/"><span>LS</span><div><strong>LiveSense</strong><small>Human Activity &amp; Safety</small></div></a>
+      <nav><a href="/">◆ Dashboard</a><a>▣ Live Feed</a><a>◷ Sessions</a><a>⇅ Analytics</a><a>⚠ Alerts</a><a class="active" href="/reports">☷ Reports</a><a>⇧ Export Data</a><a>⚙ Settings</a></nav>
+      <div class="side-actions"><a href="/">← Return to Dashboard</a><button id="refresh">Refresh Report</button><button id="print">Print / Save PDF</button></div>
+    </aside>
+    <main>
+      <header><div><p>LIVE SAFETY INTELLIGENCE</p><h1>Monitoring Session Report</h1><span id="generated">Preparing current session report…</span></div><div class="report-mark">LS</div></header>
+      <section id="overall" class="overall"><div><small>OVERALL MONITORING STATUS</small><h2>Waiting for session data</h2><p>Start the camera from the dashboard to populate this report.</p></div><strong id="quality">0%</strong></section>
+      <section id="summary" class="summary-grid"></section>
+      <section class="report-section"><div class="section-head"><div><small>DETECTION REPORT</small><h2>Current Safety Observations</h2></div><span>Live session state</span></div><div id="observations" class="observation-grid"></div></section>
+      <section class="report-section"><div class="section-head"><div><small>PERFORMANCE REPORT</small><h2>Average Signal Analysis</h2></div><span id="samples">0 recorded samples</span></div><div id="averages" class="average-grid"></div></section>
+      <section class="report-section"><div class="section-head"><div><small>ACTIVITY REPORT</small><h2>Alerts and Event History</h2></div><span id="event-count">0 events</span></div><div class="event-table"><div class="event-header"><b>Time</b><b>Severity</b><b>Report finding</b><b>Details</b></div><div id="report-events"></div></div></section>
+      <footer>This report contains automated visual estimates and is not a certified safety or medical diagnosis.</footer>
+    </main>
+  </div>
+  <script src="/static/reports.js"></script>
+</body>
+</html>

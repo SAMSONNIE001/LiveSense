@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from camera import CameraProcessor
 from config import load_settings
+from signals import SignalSnapshot
 
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT / "web"
@@ -60,9 +61,48 @@ def _live_payload(processor: CameraProcessor) -> dict:
     }
 
 
+def _report_payload() -> dict:
+    if _processor is None:
+        current = SignalSnapshot.waiting()
+        history = ()
+        events = ()
+    else:
+        view = _processor.session.snapshot()
+        current = view.current
+        history = view.history
+        events = view.events
+    points = history or (current,)
+    average_fields = ("attention", "drowsiness", "readiness", "signal_quality", "tension")
+    averages = {
+        field: round(sum(getattr(point, field) for point in points) / len(points), 1)
+        for field in average_fields
+    }
+    alert_events = [event for event in events if event.level in {"warning", "critical"}]
+    return {
+        "current": asdict(current),
+        "averages": averages,
+        "events": [asdict(event) for event in events],
+        "sample_count": len(history),
+        "alert_count": len(alert_events),
+        "critical_count": sum(event.level == "critical" for event in events),
+        "session_started_at": history[0].timestamp if history else current.timestamp,
+        "generated_at": current.timestamp,
+    }
+
+
 @app.get("/", include_in_schema=False)
 async def dashboard() -> FileResponse:
     return FileResponse(WEB_ROOT / "index.html")
+
+
+@app.get("/reports", include_in_schema=False)
+async def reports_page() -> FileResponse:
+    return FileResponse(WEB_ROOT / "reports.html")
+
+
+@app.get("/api/report")
+async def report_data() -> dict:
+    return _report_payload()
 
 
 @app.get("/favicon.ico", include_in_schema=False)
