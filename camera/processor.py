@@ -28,6 +28,24 @@ def _clamp(value: float) -> float:
     return max(0.0, min(100.0, value))
 
 
+def classify_distracted_activity(
+    *,
+    hand_near_ear: bool,
+    hand_near_mouth: bool,
+    mouth_open_score: float,
+    phone_object_score: int,
+    drink_object_score: int,
+    food_object_score: int,
+) -> tuple[bool, bool, bool]:
+    """Return raw phone, drinking and eating evidence without cross-classifying them."""
+    phone = hand_near_ear or phone_object_score >= 1
+    if phone:
+        return True, False, False
+    drinking = drink_object_score >= 1
+    eating = food_object_score >= 1 or (hand_near_mouth and mouth_open_score >= 0.22)
+    return False, drinking, eating
+
+
 class CameraProcessor:
     """Publish low-latency face, sleep, attention, movement, and phone-use signals."""
 
@@ -221,21 +239,28 @@ class CameraProcessor:
         )
         phone_result = self._detect_phone_use(image, face, now)
         self._detect_objects(image, face, phone_result.palm_positions, now)
+        mouth_open_score = landmarks.mouth_open_score if landmarks is not None else 0.0
+        phone_raw, drinking_raw, eating_raw = classify_distracted_activity(
+            hand_near_ear=phone_result.hand_near_ear,
+            hand_near_mouth=phone_result.hand_near_mouth,
+            mouth_open_score=mouth_open_score,
+            phone_object_score=self._object_streaks["phone"],
+            drink_object_score=self._object_streaks["drink"],
+            food_object_score=self._object_streaks["food"],
+        )
         phone_object_active = self._phone_object.update(
-            self._object_streaks["phone"] >= 1,
+            phone_raw and self._object_streaks["phone"] >= 1,
             now,
         )
-        phone_hand_active = self._phone_hand.update(phone_result.hand_near_ear, now)
+        phone_hand_active = self._phone_hand.update(phone_raw and phone_result.hand_near_ear, now)
         phone_at_ear = phone_object_active or phone_hand_active
-        hand_at_mouth = phone_result.hand_near_mouth and landmarks is not None
-        drinking_raw = self._object_streaks["drink"] >= 1 or (
-            hand_at_mouth and landmarks.mouth_open_score < 0.22
-        )
         drinking_detected = self._drinking.update(drinking_raw, now)
-        eating_raw = self._object_streaks["food"] >= 1 or (
-            hand_at_mouth and landmarks.mouth_open_score >= 0.22
-        )
         eating_detected = self._eating.update(eating_raw, now)
+        if phone_at_ear:
+            self._drinking.reset()
+            self._eating.reset()
+            drinking_detected = False
+            eating_detected = False
         if face is not None and self._frame_number % 6 == 1:
             self._last_seatbelt_visible = seatbelt_visible(image, face)
         seatbelt_warning = self._seatbelt_missing.update(

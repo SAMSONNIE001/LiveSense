@@ -3,7 +3,42 @@
 import av
 import numpy as np
 
-from camera import CameraProcessor
+from camera import CameraProcessor, classify_distracted_activity
+
+
+def test_phone_evidence_suppresses_eating_and_drinking() -> None:
+    phone, drinking, eating = classify_distracted_activity(
+        hand_near_ear=True,
+        hand_near_mouth=True,
+        mouth_open_score=0.5,
+        phone_object_score=1,
+        drink_object_score=1,
+        food_object_score=1,
+    )
+
+    assert (phone, drinking, eating) == (True, False, False)
+
+
+def test_drinking_requires_a_detected_drink_object() -> None:
+    without_object = classify_distracted_activity(
+        hand_near_ear=False,
+        hand_near_mouth=True,
+        mouth_open_score=0.08,
+        phone_object_score=0,
+        drink_object_score=0,
+        food_object_score=0,
+    )
+    with_object = classify_distracted_activity(
+        hand_near_ear=False,
+        hand_near_mouth=True,
+        mouth_open_score=0.08,
+        phone_object_score=0,
+        drink_object_score=1,
+        food_object_score=0,
+    )
+
+    assert without_object == (False, False, False)
+    assert with_object == (False, True, False)
 
 
 def test_camera_processor_mirrors_frames() -> None:
