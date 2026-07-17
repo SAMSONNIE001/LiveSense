@@ -8,7 +8,7 @@ becoming tightly coupled.
 Browser camera
       |
       v
-camera/processor.py       WebRTC frame boundary, mirroring, FPS
+camera/processor.py       WebRTC frames, face/eye detection, motion, overlays
       |
       v
 vision/                   Face and pose landmarks (Milestone 2)
@@ -28,7 +28,10 @@ dashboard/                Streamlit presentation and controls
 - **Browser-owned camera:** `streamlit-webrtc` captures the user's webcam in the
   browser, making local development and remote deployment behave consistently.
 - **Frame processor boundary:** `CameraProcessor` is the single real-time entry
-  point. Later vision pipelines can be composed here without leaking UI code.
+  point. It publishes immutable signal snapshots to a thread-safe session store,
+  and later landmark pipelines can be composed here without leaking UI code.
+- **Live session model:** `SignalSession` debounces activity events and samples
+  rolling history so Streamlit can refresh metrics without blocking video frames.
 - **Typed YAML settings:** configuration is operator-friendly while dataclasses
   give application code validated, explicit values.
 - **Local-first privacy:** frames are transformed in memory and are not persisted.

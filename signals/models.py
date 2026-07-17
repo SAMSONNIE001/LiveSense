@@ -1,0 +1,51 @@
+"""Immutable signal and event models shared by vision and dashboard layers."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from time import time
+
+
+@dataclass(frozen=True, slots=True)
+class SignalSnapshot:
+    """One point-in-time interpretation of the live camera feed."""
+
+    timestamp: float
+    face_detected: bool
+    activity: str
+    driver_status: str
+    fatigue: float
+    attention: float
+    readiness: float
+    tension: float
+    signal_quality: float
+    fps: float
+    brightness: float
+    calibration_remaining: float = 0.0
+
+    @classmethod
+    def waiting(cls) -> SignalSnapshot:
+        """Return a neutral state before camera frames arrive."""
+        return cls(
+            timestamp=time(),
+            face_detected=False,
+            activity="Waiting for camera",
+            driver_status="Camera Ready",
+            fatigue=0.0,
+            attention=0.0,
+            readiness=0.0,
+            tension=0.0,
+            signal_quality=0.0,
+            fps=0.0,
+            brightness=0.0,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SignalEvent:
+    """A notable state change observed during the session."""
+
+    timestamp: float
+    level: str
+    title: str
+    detail: str

@@ -1,7 +1,7 @@
 app:
   title: LiveSense
   tagline: Real-time Human Signal Intelligence
-  page_icon: "◉"
+  page_icon: "LS"
 
 camera:
   width: 1280
