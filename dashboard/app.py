@@ -183,13 +183,14 @@ def _render_local_camera_preview(active: bool) -> None:
           const state = document.getElementById("livesense-preview-state");
           const active = __LIVESENSE_ACTIVE__;
           let previewStream = null;
-          let faceLandmarker = null;
+          let poseLandmarker = null;
+          let trackingBusy = false;
           let lastVideoTime = -1;
           let lastInferenceAt = 0;
           let overlayRunning = true;
           const stopPreview = () => {
             overlayRunning = false;
-            if (faceLandmarker) faceLandmarker.close();
+            if (poseLandmarker) poseLandmarker.close();
             if (previewStream) previewStream.getTracks().forEach((track) => track.stop());
           };
           const setBadge = (detected, text) => {
@@ -201,7 +202,7 @@ def _render_local_camera_preview(active: bool) -> None:
             overlay.width = Math.max(1, Math.round(preview.clientWidth));
             overlay.height = Math.max(1, Math.round(preview.clientHeight));
           };
-          const drawFace = (landmarks) => {
+          const drawTracking = (landmarks) => {
             const width = overlay.width;
             const height = overlay.height;
             const videoWidth = preview.videoWidth || width;
@@ -213,79 +214,78 @@ def _render_local_camera_preview(active: bool) -> None:
             const offsetY = (height - shownHeight) / 2;
             const points = landmarks.map((point) => ({
               x: width - (offsetX + point.x * shownWidth),
-              y: offsetY + point.y * shownHeight
+              y: offsetY + point.y * shownHeight,
+              visibility: point.visibility ?? 1
             }));
-            const xs = points.map((point) => point.x);
-            const ys = points.map((point) => point.y);
-            const paddingX = width * .025;
-            const paddingY = height * .035;
-            const left = Math.max(2, Math.min(...xs) - paddingX);
-            const right = Math.min(width - 2, Math.max(...xs) + paddingX);
-            const top = Math.max(2, Math.min(...ys) - paddingY);
-            const bottom = Math.min(height - 2, Math.max(...ys) + paddingY);
-            const corner = Math.min(22, (right - left) * .18);
+            const facePoints = points.slice(0, 11);
+            const faceXs = facePoints.map((point) => point.x);
+            const faceYs = facePoints.map((point) => point.y);
+            const faceCenterX = (Math.min(...faceXs) + Math.max(...faceXs)) / 2;
+            const faceCenterY = (Math.min(...faceYs) + Math.max(...faceYs)) / 2;
+            const featureWidth = Math.max(24, Math.max(...faceXs) - Math.min(...faceXs));
+            const boxWidth = Math.min(width * .38, featureWidth * 1.72);
+            const boxHeight = boxWidth * 1.2;
+            const left = Math.max(2, faceCenterX - boxWidth / 2);
+            const top = Math.max(2, faceCenterY - boxHeight * .44);
+            const right = Math.min(width - 2, left + boxWidth);
+            const bottom = Math.min(height - 2, top + boxHeight);
 
+            overlayContext.clearRect(0, 0, width, height);
             overlayContext.strokeStyle = "#22e5ad";
             overlayContext.lineWidth = 2;
             overlayContext.shadowColor = "rgba(34, 229, 173, .75)";
-            overlayContext.shadowBlur = 5;
-            const corners = [
-              [left + corner, top, left, top, left, top + corner],
-              [right - corner, top, right, top, right, top + corner],
-              [left, bottom - corner, left, bottom, left + corner, bottom],
-              [right, bottom - corner, right, bottom, right - corner, bottom]
+            overlayContext.shadowBlur = 4;
+            overlayContext.strokeRect(left, top, right - left, bottom - top);
+            overlayContext.shadowBlur = 0;
+
+            const armConnections = [
+              [11, 12], [11, 13], [13, 15], [15, 17], [15, 19],
+              [12, 14], [14, 16], [16, 18], [16, 20]
             ];
-            for (const line of corners) {
+            overlayContext.strokeStyle = "#29c8ef";
+            overlayContext.lineWidth = 2.2;
+            overlayContext.lineCap = "round";
+            overlayContext.lineJoin = "round";
+            for (const [start, end] of armConnections) {
+              const from = points[start];
+              const to = points[end];
+              if (!from || !to || from.visibility < .35 || to.visibility < .35) continue;
               overlayContext.beginPath();
-              overlayContext.moveTo(line[0], line[1]);
-              overlayContext.lineTo(line[2], line[3]);
-              overlayContext.lineTo(line[4], line[5]);
+              overlayContext.moveTo(from.x, from.y);
+              overlayContext.lineTo(to.x, to.y);
               overlayContext.stroke();
             }
-            overlayContext.shadowBlur = 0;
-            overlayContext.fillStyle = "rgba(49, 213, 239, .72)";
-            for (let index = 0; index < points.length; index += 7) {
-              const point = points[index];
-              overlayContext.beginPath();
-              overlayContext.arc(point.x, point.y, 1.15, 0, Math.PI * 2);
-              overlayContext.fill();
-            }
-            const keyPoints = [1, 10, 33, 61, 133, 152, 263, 291, 362];
-            overlayContext.fillStyle = "#5af0ff";
-            for (const index of keyPoints) {
-              const point = points[index];
-              if (!point) continue;
-              overlayContext.beginPath();
-              overlayContext.arc(point.x, point.y, 2.1, 0, Math.PI * 2);
-              overlayContext.fill();
-            }
+
             overlayContext.fillStyle = "rgba(3, 18, 27, .86)";
             overlayContext.fillRect(left, Math.max(0, top - 17), 79, 15);
             overlayContext.fillStyle = "#55efbd";
             overlayContext.font = '700 9px "Segoe UI", sans-serif';
             overlayContext.fillText("FACE DETECTED", left + 5, Math.max(11, top - 6));
           };
-          const trackFace = () => {
+          const trackBody = () => {
             if (!overlayRunning) return;
             const now = performance.now();
             if (
-              faceLandmarker && preview.readyState >= 2 &&
-              preview.currentTime !== lastVideoTime && now - lastInferenceAt >= 110
+              poseLandmarker && !trackingBusy && preview.readyState >= 2 &&
+              preview.currentTime !== lastVideoTime && now - lastInferenceAt >= 360
             ) {
               lastVideoTime = preview.currentTime;
               lastInferenceAt = now;
-              const result = faceLandmarker.detectForVideo(preview, now);
-              overlayContext.clearRect(0, 0, overlay.width, overlay.height);
-              if (result.faceLandmarks && result.faceLandmarks.length) {
-                drawFace(result.faceLandmarks[0]);
-                setBadge(true, "FACE DETECTED");
-              } else {
-                setBadge(false, "SEARCHING FOR FACE");
-              }
+              trackingBusy = true;
+              poseLandmarker.detectForVideo(preview, now, (result) => {
+                trackingBusy = false;
+                if (result.landmarks && result.landmarks.length) {
+                  drawTracking(result.landmarks[0]);
+                  setBadge(true, "FACE + ARMS DETECTED");
+                } else {
+                  overlayContext.clearRect(0, 0, overlay.width, overlay.height);
+                  setBadge(false, "SEARCHING FOR FACE + ARMS");
+                }
+              });
             }
-            requestAnimationFrame(trackFace);
+            requestAnimationFrame(trackBody);
           };
-          const initialiseFaceOverlay = async () => {
+          const initialiseTrackingOverlay = async () => {
             try {
               const vision = await import(
                 "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/+esm"
@@ -295,25 +295,25 @@ def _render_local_camera_preview(active: bool) -> None:
               );
               const options = {
                 baseOptions: {
-                  modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+                  modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
                   delegate: "GPU"
                 },
                 runningMode: "VIDEO",
-                numFaces: 1,
-                minFaceDetectionConfidence: .55,
-                minFacePresenceConfidence: .55,
-                minTrackingConfidence: .55
+                numPoses: 1,
+                minPoseDetectionConfidence: .5,
+                minPosePresenceConfidence: .5,
+                minTrackingConfidence: .5
               };
               try {
-                faceLandmarker = await vision.FaceLandmarker.createFromOptions(files, options);
+                poseLandmarker = await vision.PoseLandmarker.createFromOptions(files, options);
               } catch (gpuError) {
                 options.baseOptions.delegate = "CPU";
-                faceLandmarker = await vision.FaceLandmarker.createFromOptions(files, options);
+                poseLandmarker = await vision.PoseLandmarker.createFromOptions(files, options);
               }
-              setBadge(false, "SEARCHING FOR FACE");
-              requestAnimationFrame(trackFace);
+              setBadge(false, "SEARCHING FOR FACE + ARMS");
+              requestAnimationFrame(trackBody);
             } catch (error) {
-              setBadge(false, "FACE OVERLAY UNAVAILABLE");
+              setBadge(false, "TRACKING OVERLAY UNAVAILABLE");
             }
           };
           if (active) {
@@ -330,7 +330,7 @@ def _render_local_camera_preview(active: bool) -> None:
               preview.onplaying = () => {
                 syncOverlaySize();
                 state.style.display = "none";
-                initialiseFaceOverlay();
+                initialiseTrackingOverlay();
               };
             }).catch((error) => {
               state.textContent = `Camera unavailable: ${error.message}`;
@@ -630,48 +630,40 @@ def _render_events() -> None:
     )
 
 
-def _activity_lane_plot(
+def _combined_activity_plot(
     series: list[tuple[str, str, list[float], str]],
 ) -> str:
-    """Render independent signal lanes in one compact, readable SVG plot."""
-    lane_height = 20
-    plot_top = 8
-    plot_left = 112.0
-    plot_right = 878.0
-    height = plot_top + len(series) * lane_height + 4
+    """Render all live signs as independently moving lines in one plot."""
+    plot_left = 42.0
+    plot_right = 985.0
+    plot_top = 8.0
+    plot_bottom = 148.0
     elements: list[str] = []
-    for lane, (label, state, raw_values, color) in enumerate(series):
+    for value in (0, 25, 50, 75, 100):
+        y = plot_bottom - value * (plot_bottom - plot_top) / 100
+        elements.append(
+            f'<line x1="{plot_left:.0f}" y1="{y:.1f}" x2="{plot_right:.0f}" '
+            f'y2="{y:.1f}" stroke="#193243" stroke-width="1" />'
+        )
+        elements.append(
+            f'<text x="34" y="{y + 3:.1f}" text-anchor="end" class="plot-axis-label">{value}</text>'
+        )
+    for _label, _state, raw_values, color in series:
         values = raw_values[-60:] if raw_values else [0.0]
         if len(values) == 1:
             values = [values[0], values[0]]
-        lane_top = plot_top + lane * lane_height
-        baseline = lane_top + 15
-        background = "#0a1926" if lane % 2 == 0 else "#0c1c29"
-        elements.append(
-            f'<rect x="0" y="{lane_top}" width="1000" height="{lane_height}" fill="{background}" />'
-        )
-        elements.append(
-            f'<line x1="{plot_left:.0f}" y1="{baseline}" x2="{plot_right:.0f}" '
-            f'y2="{baseline}" stroke="#193243" stroke-width="1" />'
-        )
         points = []
         for index, value in enumerate(values):
             x = plot_left + index * (plot_right - plot_left) / (len(values) - 1)
-            y = baseline - max(0.0, min(100.0, value)) * 0.11
+            y = plot_bottom - max(0.0, min(100.0, value)) * (plot_bottom - plot_top) / 100
             points.append(f"{x:.1f},{y:.1f}")
         elements.append(
             f'<polyline points="{" ".join(points)}" fill="none" stroke="{color}" '
-            'stroke-width="2" vector-effect="non-scaling-stroke" />'
-        )
-        elements.append(
-            f'<text x="8" y="{baseline - 3}" class="activity-label">{escape(label)}</text>'
-        )
-        elements.append(
-            f'<text x="992" y="{baseline - 3}" text-anchor="end" '
-            f'class="activity-state">{escape(state)}</text>'
+            'stroke-width="1.8" stroke-linejoin="round" '
+            'vector-effect="non-scaling-stroke" />'
         )
     return (
-        f'<svg class="activity-plot" viewBox="0 0 1000 {height}" '
+        '<svg class="activity-plot" viewBox="0 0 1000 160" '
         'preserveAspectRatio="none">' + "".join(elements) + "</svg>"
     )
 
@@ -735,14 +727,20 @@ def _render_trends() -> None:
             "#159b72",
         ),
     ]
+    legend = "".join(
+        f'<span class="signal-legend-item"><i style="background:{color}"></i>'
+        f"{escape(label)} <strong>{escape(state)}</strong></span>"
+        for label, state, _values, color in chart_data
+    )
     st.markdown(
         f"""
         <div class="trend-card activity-card">
           <div class="trend-meta">
-            <span class="trend-title">All Activity Signals</span>
-            <span class="trend-range">Last 60 observations · updates every second</span>
+            <span class="trend-title">All Signals Activity</span>
+            <span class="trend-range">Live · last 60 seconds</span>
           </div>
-          {_activity_lane_plot(chart_data)}
+          <div class="signal-legend">{legend}</div>
+          {_combined_activity_plot(chart_data)}
         </div>
         """,
         unsafe_allow_html=True,

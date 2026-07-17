@@ -177,6 +177,12 @@ THEME_CSS = """
     position: absolute; width: 1px !important; height: 1px !important;
     opacity: 0; pointer-events: none;
   }
+  div[data-testid="stCustomComponentV1"]:has(
+    iframe[title="streamlit_webrtc.component.webrtc_streamer"]
+  ) {
+    position: absolute; width: 1px !important; height: 1px !important;
+    min-height: 0 !important; overflow: hidden; opacity: 0;
+  }
 
   .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem; }
   .metric-box {
@@ -238,16 +244,21 @@ THEME_CSS = """
   .spark-grid { stroke: #172d3e; stroke-width: 1; }
   .activity-card { padding-bottom: .4rem; }
   .activity-plot {
-    display: block; width: 100%; height: 10.4rem; margin-top: .35rem;
+    display: block; width: 100%; height: 8.2rem; margin-top: .25rem;
     overflow: visible;
   }
-  .activity-label {
-    fill: #9cb0bc; font-family: Inter, "Segoe UI", Arial, sans-serif;
-    font-size: 10px; font-weight: 700;
+  .signal-legend {
+    display: flex; flex-wrap: wrap; gap: .28rem .7rem; margin-top: .35rem;
   }
-  .activity-state {
-    fill: #718b99; font-family: Inter, "Segoe UI", Arial, sans-serif;
-    font-size: 9px; font-weight: 700;
+  .signal-legend-item {
+    display: inline-flex; align-items: center; gap: .24rem;
+    color: #8097a4; font-size: .49rem;
+  }
+  .signal-legend-item i { width: .42rem; height: .13rem; border-radius: 1rem; }
+  .signal-legend-item strong { color: #c6d8e1; font-weight: 750; }
+  .plot-axis-label {
+    fill: #587180; font-family: Inter, "Segoe UI", Arial, sans-serif;
+    font-size: 8px;
   }
 
   @media (max-width: 900px) {
@@ -304,7 +315,8 @@ THEME_CSS = """
     .trend-card { padding: .4rem .5rem .2rem; }
     .trend-label { margin: .28rem 0 .05rem; }
     .sparkline { height: 2.45rem; }
-    .activity-plot { height: 7.6rem; margin-top: .18rem; }
+    .activity-plot { height: 5.8rem; margin-top: .12rem; }
+    .signal-legend { gap: .16rem .45rem; margin-top: .2rem; }
   }
 
   @media (max-height: 680px) {
@@ -324,7 +336,8 @@ THEME_CSS = """
     video { max-height: 30vh !important; }
     [data-testid="stCustomComponentV1"] iframe { max-height: 31vh; }
     .sparkline { height: 1.8rem; }
-    .activity-plot { height: 6.5rem; }
+    .activity-plot { height: 4.7rem; }
+    .signal-legend-item { font-size: .43rem; }
   }
 </style>
 """
