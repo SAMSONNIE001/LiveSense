@@ -16,10 +16,12 @@ def test_static_dashboard_contains_camera_and_live_signal_client() -> None:
     javascript = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
 
     assert 'id="camera"' in html
-    assert 'id="activity-chart"' in html
+    assert 'id="activity-record"' in html
+    assert 'id="activity-chart"' not in html
     assert "/ws/analyze" in javascript
     assert "getUserMedia" in javascript
     assert "PoseLandmarker" in javascript
+    assert '["sleeping",colors.purple,"Sleeping"]' in javascript
     assert "if (cameraActive) scheduleFrame()" in javascript
 
 
