@@ -181,7 +181,7 @@ function updateDashboard(payload) {
   $("#signal-cards").innerHTML = cards.join("");
   const activities = [["Face Detected",current.face_detected],["Eyes Closed",current.eyes_closed],["Looking Forward",current.attention>=48],["Phone Use",current.phone_at_ear],["Eating",current.eating_detected],["Drinking",current.drinking_detected],["Seat Belt",current.seatbelt_visible],["Yawning",current.yawning]];
   $("#activity-list").innerHTML = activities.map(([name, active]) => `<div class="activity-row"><span>${name}</span><b class="${active?'yes':''}">${active?'Yes':'No'}</b></div>`).join("");
-  updateQuality(current); updateNotice(current); updateEvents(payload.events); updateActivityRecord(current); updateSummary(current, payload.events); updateCharts(payload.history); alarm(current.alarm_active);
+  updateQuality(current); updateNotice(current); updateSeatbeltAdvice(current); updateEvents(payload.events); updateActivityRecord(current); updateSummary(current, payload.events); updateCharts(payload.history); alarm(current.alarm_active);
   $("#nav-alerts").textContent = payload.events.filter((event) => event.level !== "info").length;
 }
 
@@ -192,6 +192,14 @@ function updateQuality(current) {
 }
 
 function showNotice(level, title, detail) { const node=$("#notice"); node.className=`notice ${level}`; node.innerHTML=`<span>${level==='danger'?'!':level==='warning'?'!':'✓'}</span><div><strong>${title}</strong><small>${detail}</small></div>`; }
+function updateSeatbeltAdvice(c) {
+  const node = $("#seatbelt-advice");
+  const state = c.seatbelt_visible ? "safe" : c.seatbelt_warning ? "warning" : "checking";
+  const status = c.seatbelt_visible ? "Visible" : c.seatbelt_warning ? "Fasten now" : "Checking";
+  const detail = c.seatbelt_visible ? "Seat belt appears fastened. Keep it secured for the full journey." : "Wear and fasten your seat belt before moving.";
+  node.className = `seatbelt-advice ${state}`;
+  node.innerHTML = `<span>◇</span><div><strong>SEAT-BELT SAFETY</strong><small>${detail}</small></div><b>${status}</b>`;
+}
 function updateNotice(c) {
   if (c.alarm_active) return showNotice("danger","DANGER: SLEEP DETECTED — PULL OVER NOW","Stop driving, move to a safe place, and rest before continuing.");
   if (c.phone_at_ear) return showNotice("danger","PHONE USE DETECTED","Put the phone down and keep both hands available.");

@@ -102,13 +102,13 @@ class CameraProcessor:
         self._last_object_result = ObjectObservation()
         self._object_streaks = {"phone": 0, "drink": 0, "food": 0}
         self._last_seatbelt_visible = False
-        # Object and hand cues must persist before a warning is published.  The
-        # longer clear time prevents the top notice from flickering between
-        # frames when a cup, phone, hand, or face is briefly occluded.
-        self._phone_object = StableObservation(activate_seconds=0.20, clear_seconds=0.80)
-        self._phone_hand = StableObservation(activate_seconds=0.35, clear_seconds=0.80)
-        self._drinking = StableObservation(activate_seconds=0.35, clear_seconds=0.90)
-        self._eating = StableObservation(activate_seconds=0.35, clear_seconds=0.90)
+        # Publish positive safety cues immediately, then clear them gradually
+        # so the notice remains readable through brief object occlusions.
+        self._phone_object = StableObservation(activate_seconds=0.0, clear_seconds=0.80)
+        self._phone_hand = StableObservation(activate_seconds=0.0, clear_seconds=0.65)
+        self._drinking = StableObservation(activate_seconds=0.0, clear_seconds=0.75)
+        self._eating = StableObservation(activate_seconds=0.10, clear_seconds=0.75)
+        self._yawning = StableObservation(activate_seconds=0.0, clear_seconds=2.0)
         self._seatbelt_missing = StableObservation(activate_seconds=5.0, clear_seconds=2.0)
         self._face_missing = StableObservation(activate_seconds=2.0, clear_seconds=1.0)
         self._calibration_until = 0.0
@@ -139,6 +139,7 @@ class CameraProcessor:
             self._phone_hand,
             self._drinking,
             self._eating,
+            self._yawning,
             self._seatbelt_missing,
             self._face_missing,
         ):
@@ -204,7 +205,7 @@ class CameraProcessor:
             face = landmarks.bounding_box
             face_detected = True
             eyes_closed = landmarks.eyes_closed
-            yawning = landmarks.yawning
+            yawning = self._yawning.update(landmarks.yawning, now)
             head_pitch = landmarks.head_pitch
             head_yaw = landmarks.head_yaw
             eyes_detected = 0 if eyes_closed else 2
@@ -354,7 +355,7 @@ class CameraProcessor:
     ) -> FaceLandmarkResult | None:
         if self._landmark_analyzer is None:
             return None
-        if self._frame_number % 3 == 1:
+        if self._frame_number % 2 == 1:
             try:
                 self._last_landmarks = self._landmark_analyzer.analyze(image, int(now * 1000))
             except (RuntimeError, ValueError):
@@ -370,7 +371,9 @@ class CameraProcessor:
         if self._phone_analyzer is None or face is None:
             self._last_phone_result = HandPhoneResult()
             return self._last_phone_result
-        if self._frame_number % 3 == 1:
+        # Alternate hand inference with face/object inference to avoid one
+        # overloaded frame causing a visible dashboard pause.
+        if self._frame_number % 2 == 0:
             try:
                 self._last_phone_result = self._phone_analyzer.analyze(
                     image,
@@ -392,7 +395,9 @@ class CameraProcessor:
             self._last_object_result = ObjectObservation()
             self._object_streaks = {"phone": 0, "drink": 0, "food": 0}
             return self._last_object_result
-        if self._frame_number % 4 == 1:
+        # At 2-6 FPS, checking only every fourth frame made visible object
+        # warnings several seconds late.
+        if self._frame_number % 2 == 1:
             try:
                 self._last_object_result = self._object_analyzer.analyze(
                     image,

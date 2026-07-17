@@ -66,9 +66,12 @@ class DrowsinessMonitor:
             closure_score + (18.0 if recent_yawn else 0.0) + (12.0 if head_drop else 0.0),
         )
 
-        sleeping = self._closure_seconds >= self.sleeping_seconds or (
-            self._closure_seconds >= self.sleeping_seconds * 0.72 and head_drop
-        )
+        # LiveSense is intentionally configured as a high-sensitivity safety
+        # monitor: one reliable closed-eye landmark result raises the alarm.
+        # This also avoids extra wall-clock delay on lower-FPS computers.
+        sleeping = eyes_closed
+        if sleeping:
+            score = 100.0
         dozing = self._closure_seconds >= self.dozing_seconds or score >= 45.0
         if sleeping:
             state = "Sleeping"

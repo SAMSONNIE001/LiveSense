@@ -76,6 +76,11 @@ def eyes_appear_closed(
     return both_blinks or average_blink >= 0.42 or average_ear < 0.21
 
 
+def mouth_appears_yawning(mouth_open_score: float) -> bool:
+    """Return whether jaw opening is large enough to represent a likely yawn."""
+    return mouth_open_score >= 0.38
+
+
 class FaceLandmarkAnalyzer:
     """Run MediaPipe Face Landmarker in video mode."""
 
@@ -129,7 +134,9 @@ class FaceLandmarkAnalyzer:
         blink_score = (left_blink + right_blink) / 2.0
         mouth_open = blendshapes.get("jawOpen", 0.0)
         eyes_closed = eyes_appear_closed(left_ear, right_ear, left_blink, right_blink)
-        yawning = mouth_open >= 0.58
+        # jawOpen varies by face and camera angle. This catches normal yawns
+        # while remaining above typical speech movement.
+        yawning = mouth_appears_yawning(mouth_open)
 
         pitch = 0.0
         yaw = 0.0

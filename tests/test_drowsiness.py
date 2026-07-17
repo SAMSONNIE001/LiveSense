@@ -3,26 +3,18 @@
 from signals import DrowsinessMonitor
 
 
-def test_sustained_eye_closure_escalates_from_dozing_to_sleeping() -> None:
+def test_reliable_eye_closure_overrides_long_duration_settings() -> None:
     monitor = DrowsinessMonitor(dozing_seconds=1.0, sleeping_seconds=3.0)
-    dozing = None
-    sleeping = None
-    for step in range(33):
-        result = monitor.update(
-            timestamp=step / 10,
-            face_detected=True,
-            eyes_closed=True,
-            yawning=False,
-            head_pitch=0.0,
-        )
-        if step == 12:
-            dozing = result
-        sleeping = result
+    result = monitor.update(
+        timestamp=0.0,
+        face_detected=True,
+        eyes_closed=True,
+        yawning=False,
+        head_pitch=0.0,
+    )
 
-    assert dozing.state == "Dozing"
-    assert dozing.alarm_active is False
-    assert sleeping.state == "Sleeping"
-    assert sleeping.alarm_active is True
+    assert result.state == "Sleeping"
+    assert result.alarm_active is True
 
 
 def test_open_eyes_do_not_trigger_alarm() -> None:
@@ -54,6 +46,21 @@ def test_default_monitor_alarms_within_one_second_of_eye_closure() -> None:
         )
 
     assert result.eye_closure_seconds >= 0.70
+    assert result.state == "Sleeping"
+    assert result.alarm_active is True
+
+
+def test_closed_eyes_trigger_sleep_alarm_on_first_reliable_observation() -> None:
+    monitor = DrowsinessMonitor()
+
+    result = monitor.update(
+        timestamp=1.0,
+        face_detected=True,
+        eyes_closed=True,
+        yawning=False,
+        head_pitch=0.0,
+    )
+
     assert result.state == "Sleeping"
     assert result.alarm_active is True
 
