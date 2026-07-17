@@ -41,6 +41,23 @@ def test_open_eyes_do_not_trigger_alarm() -> None:
     assert result.alarm_active is False
 
 
+def test_default_monitor_alarms_within_one_second_of_eye_closure() -> None:
+    monitor = DrowsinessMonitor()
+    result = None
+    for step in range(9):
+        result = monitor.update(
+            timestamp=step / 10,
+            face_detected=True,
+            eyes_closed=True,
+            yawning=False,
+            head_pitch=0.0,
+        )
+
+    assert result.eye_closure_seconds >= 0.70
+    assert result.state == "Sleeping"
+    assert result.alarm_active is True
+
+
 def test_yawn_creates_drowsy_warning_without_sleep_alarm() -> None:
     monitor = DrowsinessMonitor()
     result = monitor.update(

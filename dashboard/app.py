@@ -415,7 +415,7 @@ def _sparkline(values: list[float], color: str) -> str:
     ).strip()
 
 
-@st.fragment(run_every=0.5)
+@st.fragment(run_every=0.2)
 def _render_status_banner() -> None:
     current, _, _ = _live_view()
     if current.alarm_active:

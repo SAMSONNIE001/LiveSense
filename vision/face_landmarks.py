@@ -63,6 +63,19 @@ def _head_angles(matrix: np.ndarray) -> tuple[float, float]:
     return degrees(pitch), degrees(yaw)
 
 
+def eyes_appear_closed(
+    left_ear: float,
+    right_ear: float,
+    left_blink: float,
+    right_blink: float,
+) -> bool:
+    """Combine eyelid shape and blendshapes so dim lighting does not hide closure."""
+    average_ear = (left_ear + right_ear) / 2.0
+    average_blink = (left_blink + right_blink) / 2.0
+    both_blinks = left_blink >= 0.34 and right_blink >= 0.34
+    return both_blinks or average_blink >= 0.42 or average_ear < 0.21
+
+
 class FaceLandmarkAnalyzer:
     """Run MediaPipe Face Landmarker in video mode."""
 
@@ -111,11 +124,11 @@ class FaceLandmarkAnalyzer:
             category.category_name: float(category.score)
             for category in (result.face_blendshapes[0] if result.face_blendshapes else [])
         }
-        blink_score = (
-            blendshapes.get("eyeBlinkLeft", 0.0) + blendshapes.get("eyeBlinkRight", 0.0)
-        ) / 2.0
+        left_blink = blendshapes.get("eyeBlinkLeft", 0.0)
+        right_blink = blendshapes.get("eyeBlinkRight", 0.0)
+        blink_score = (left_blink + right_blink) / 2.0
         mouth_open = blendshapes.get("jawOpen", 0.0)
-        eyes_closed = blink_score >= 0.52 or ear < 0.18
+        eyes_closed = eyes_appear_closed(left_ear, right_ear, left_blink, right_blink)
         yawning = mouth_open >= 0.58
 
         pitch = 0.0

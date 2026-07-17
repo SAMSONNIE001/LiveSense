@@ -18,6 +18,12 @@ def test_hand_away_from_face_is_clear() -> None:
     assert result.hand_near_ear is False
 
 
+def test_hand_in_front_of_mouth_is_not_mistaken_for_phone_at_ear() -> None:
+    result = hand_near_face_ear((140.0, 92.0), (100, 40, 80, 100))
+
+    assert result.hand_near_ear is False
+
+
 def test_hand_landmarker_model_loads() -> None:
     analyzer = HandPhoneAnalyzer()
     try:

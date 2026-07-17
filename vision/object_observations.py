@@ -147,8 +147,8 @@ class ObjectObservationAnalyzer:
         options = mp.tasks.vision.ObjectDetectorOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=str(path)),
             running_mode=mp.tasks.vision.RunningMode.VIDEO,
-            max_results=10,
-            score_threshold=0.26,
+            max_results=20,
+            score_threshold=0.12,
             category_allowlist=OBSERVATION_LABELS,
         )
         self._detector = mp.tasks.vision.ObjectDetector.create_from_options(options)

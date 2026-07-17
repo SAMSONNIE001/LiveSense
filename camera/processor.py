@@ -38,8 +38,8 @@ class CameraProcessor:
         privacy_blur: bool = False,
         enable_landmarks: bool = True,
         enable_phone_detection: bool = True,
-        dozing_seconds: float = 1.1,
-        sleeping_seconds: float = 3.0,
+        dozing_seconds: float = 0.25,
+        sleeping_seconds: float = 0.70,
     ) -> None:
         self._mirrored = mirrored
         self._show_fps = show_fps
@@ -86,10 +86,10 @@ class CameraProcessor:
         # Object and hand cues must persist before a warning is published.  The
         # longer clear time prevents the top notice from flickering between
         # frames when a cup, phone, hand, or face is briefly occluded.
-        self._phone_object = StableObservation(activate_seconds=0.8, clear_seconds=1.4)
-        self._phone_hand = StableObservation(activate_seconds=1.4, clear_seconds=1.4)
-        self._drinking = StableObservation(activate_seconds=1.0, clear_seconds=1.4)
-        self._eating = StableObservation(activate_seconds=1.2, clear_seconds=1.4)
+        self._phone_object = StableObservation(activate_seconds=0.20, clear_seconds=0.80)
+        self._phone_hand = StableObservation(activate_seconds=0.35, clear_seconds=0.80)
+        self._drinking = StableObservation(activate_seconds=0.35, clear_seconds=0.90)
+        self._eating = StableObservation(activate_seconds=0.35, clear_seconds=0.90)
         self._seatbelt_missing = StableObservation(activate_seconds=5.0, clear_seconds=2.0)
         self._face_missing = StableObservation(activate_seconds=2.0, clear_seconds=1.0)
         self._calibration_until = 0.0
@@ -212,19 +212,18 @@ class CameraProcessor:
         phone_result = self._detect_phone_use(image, face, now)
         self._detect_objects(image, face, phone_result.palm_positions, now)
         phone_object_active = self._phone_object.update(
-            self._object_streaks["phone"] >= 2,
+            self._object_streaks["phone"] >= 1,
             now,
         )
         phone_hand_active = self._phone_hand.update(phone_result.hand_near_ear, now)
         phone_at_ear = phone_object_active or phone_hand_active
-        drinking_detected = self._drinking.update(
-            self._object_streaks["drink"] >= 2,
-            now,
+        hand_at_mouth = phone_result.hand_near_mouth and landmarks is not None
+        drinking_raw = self._object_streaks["drink"] >= 1 or (
+            hand_at_mouth and landmarks.mouth_open_score < 0.22
         )
-        eating_raw = self._object_streaks["food"] >= 2 or (
-            phone_result.hand_near_mouth
-            and landmarks is not None
-            and landmarks.mouth_open_score >= 0.18
+        drinking_detected = self._drinking.update(drinking_raw, now)
+        eating_raw = self._object_streaks["food"] >= 1 or (
+            hand_at_mouth and landmarks.mouth_open_score >= 0.22
         )
         eating_detected = self._eating.update(eating_raw, now)
         if face is not None and self._frame_number % 6 == 1:
@@ -336,7 +335,7 @@ class CameraProcessor:
         if self._phone_analyzer is None or face is None:
             self._last_phone_result = HandPhoneResult()
             return self._last_phone_result
-        if self._frame_number % 6 == 1:
+        if self._frame_number % 3 == 1:
             try:
                 self._last_phone_result = self._phone_analyzer.analyze(
                     image,
@@ -358,7 +357,7 @@ class CameraProcessor:
             self._last_object_result = ObjectObservation()
             self._object_streaks = {"phone": 0, "drink": 0, "food": 0}
             return self._last_object_result
-        if self._frame_number % 5 == 1:
+        if self._frame_number % 4 == 1:
             try:
                 self._last_object_result = self._object_analyzer.analyze(
                     image,
@@ -377,7 +376,10 @@ class CameraProcessor:
                 "food": self._last_object_result.food_near_mouth,
             }
             for name, active in observed.items():
-                self._object_streaks[name] = min(3, self._object_streaks[name] + 1) if active else 0
+                if active:
+                    self._object_streaks[name] = min(3, self._object_streaks[name] + 1)
+                else:
+                    self._object_streaks[name] = max(0, self._object_streaks[name] - 1)
         return self._last_object_result
 
     def _haar_fallback(

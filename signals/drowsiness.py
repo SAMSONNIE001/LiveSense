@@ -19,8 +19,8 @@ class DrowsinessMonitor:
 
     def __init__(
         self,
-        dozing_seconds: float = 1.1,
-        sleeping_seconds: float = 3.0,
+        dozing_seconds: float = 0.25,
+        sleeping_seconds: float = 0.70,
     ) -> None:
         self.dozing_seconds = dozing_seconds
         self.sleeping_seconds = sleeping_seconds

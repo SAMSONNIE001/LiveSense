@@ -39,11 +39,12 @@ def hand_near_face_ear(
     if width <= 0 or height <= 0:
         return HandPhoneResult()
     ear_y = top + height * 0.48
-    radius = max(width * 0.48, height * 0.3)
+    radius = max(width * 0.68, height * 0.42)
     left_distance = hypot(palm[0] - left, palm[1] - ear_y)
     right_distance = hypot(palm[0] - (left + width), palm[1] - ear_y)
     distance = min(left_distance, right_distance)
-    if distance > radius:
+    beside_face = palm[0] <= left + width * 0.38 or palm[0] >= left + width * 0.62
+    if distance > radius or not beside_face:
         return HandPhoneResult()
     return HandPhoneResult(True, "left" if left_distance <= right_distance else "right")
 
@@ -59,9 +60,9 @@ class HandPhoneAnalyzer:
             base_options=mp.tasks.BaseOptions(model_asset_path=str(path)),
             running_mode=mp.tasks.vision.RunningMode.VIDEO,
             num_hands=2,
-            min_hand_detection_confidence=0.48,
-            min_hand_presence_confidence=0.48,
-            min_tracking_confidence=0.48,
+            min_hand_detection_confidence=0.30,
+            min_hand_presence_confidence=0.30,
+            min_tracking_confidence=0.30,
         )
         self._landmarker = mp.tasks.vision.HandLandmarker.create_from_options(options)
         self._last_timestamp_ms = 0
@@ -86,7 +87,7 @@ class HandPhoneAnalyzer:
         palm_indexes = (0, 5, 9, 13, 17)
         left, top, face_width, face_height = face_box
         mouth = (left + face_width * 0.5, top + face_height * 0.76)
-        mouth_radius = max(face_width * 0.58, face_height * 0.36)
+        mouth_radius = max(face_width * 0.82, face_height * 0.52)
         palms: list[tuple[float, float]] = []
         near_ear = False
         side = ""
@@ -105,7 +106,10 @@ class HandPhoneAnalyzer:
             if ear_result.hand_near_ear and not near_ear:
                 near_ear = True
                 side = ear_result.side
-            near_mouth = near_mouth or hypot(palm[0] - mouth[0], palm[1] - mouth[1]) <= mouth_radius
+            near_mouth = near_mouth or (
+                not ear_result.hand_near_ear
+                and hypot(palm[0] - mouth[0], palm[1] - mouth[1]) <= mouth_radius
+            )
         return HandPhoneResult(near_ear, side, near_mouth, tuple(palms))
 
     def close(self) -> None:
