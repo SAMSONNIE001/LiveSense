@@ -256,7 +256,6 @@ def _render_sidebar() -> None:
     st.selectbox("Care Context", ["Chair", "Standing", "Vehicle"], label_visibility="visible")
     st.toggle(
         "Privacy blur",
-        value=False,
         key="privacy_blur",
         help="Blur the detected face after live signals are calculated.",
     )
@@ -284,6 +283,7 @@ def render_dashboard() -> None:
         "calibration_requested": False,
         "reset_requested": False,
         "latest_feedback": "None",
+        "privacy_blur": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -291,6 +291,10 @@ def render_dashboard() -> None:
 
     with st.sidebar:
         _render_sidebar()
+
+    # WebRTC creates its processor outside the Streamlit script callback. Capture
+    # widget state here instead of reading session_state from that worker context.
+    privacy_blur = bool(st.session_state.get("privacy_blur", False))
 
     st.markdown(
         '<div class="topbar"><span class="user-chip">↑ &nbsp; '
@@ -314,7 +318,7 @@ def render_dashboard() -> None:
                 video_processor_factory=lambda: CameraProcessor(
                     mirrored=settings.camera.mirrored,
                     show_fps=settings.camera.show_fps,
-                    privacy_blur=st.session_state.privacy_blur,
+                    privacy_blur=privacy_blur,
                 ),
                 media_stream_constraints={
                     "video": {
@@ -334,7 +338,7 @@ def render_dashboard() -> None:
                 processor.configure(
                     mirrored=settings.camera.mirrored,
                     show_fps=settings.camera.show_fps,
-                    privacy_blur=st.session_state.privacy_blur,
+                    privacy_blur=privacy_blur,
                 )
                 if st.session_state.calibration_requested:
                     processor.start_calibration(10.0)
