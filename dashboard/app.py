@@ -7,7 +7,6 @@ from html import escape
 from textwrap import dedent
 
 import streamlit as st
-import streamlit.components.v1 as components
 from streamlit_webrtc import WebRtcMode, webrtc_streamer
 
 from camera import CameraProcessor
@@ -182,16 +181,25 @@ def _render_local_camera_preview(active: bool) -> None:
           const detectionBadge = document.getElementById("livesense-detection-badge");
           const state = document.getElementById("livesense-preview-state");
           const active = __LIVESENSE_ACTIVE__;
-          let previewStream = null;
-          let poseLandmarker = null;
+          const runId = `${Date.now()}-${Math.random()}`;
+          window.__livesensePreviewRunId = runId;
+          let previewStream = window.__livesensePreviewStream || null;
+          let poseLandmarker = window.__livesensePoseLandmarker || null;
           let trackingBusy = false;
           let lastVideoTime = -1;
           let lastInferenceAt = 0;
           let overlayRunning = true;
           const stopPreview = () => {
             overlayRunning = false;
-            if (poseLandmarker) poseLandmarker.close();
+            window.__livesensePreviewRunId = null;
+            if (poseLandmarker) {
+              poseLandmarker.close();
+              window.__livesensePoseLandmarker = null;
+              poseLandmarker = null;
+            }
             if (previewStream) previewStream.getTracks().forEach((track) => track.stop());
+            window.__livesensePreviewStream = null;
+            previewStream = null;
           };
           const setBadge = (detected, text) => {
             detectionBadge.style.display = "flex";
@@ -263,7 +271,10 @@ def _render_local_camera_preview(active: bool) -> None:
             overlayContext.fillText("FACE DETECTED", left + 5, Math.max(11, top - 6));
           };
           const trackBody = () => {
-            if (!overlayRunning) return;
+            if (
+              !overlayRunning ||
+              window.__livesensePreviewRunId !== runId
+            ) return;
             const now = performance.now();
             if (
               poseLandmarker && !trackingBusy && preview.readyState >= 2 &&
@@ -286,6 +297,10 @@ def _render_local_camera_preview(active: bool) -> None:
             requestAnimationFrame(trackBody);
           };
           const initialiseTrackingOverlay = async () => {
+            if (poseLandmarker) {
+              requestAnimationFrame(trackBody);
+              return;
+            }
             try {
               const vision = await import(
                 "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/+esm"
@@ -310,13 +325,30 @@ def _render_local_camera_preview(active: bool) -> None:
                 options.baseOptions.delegate = "CPU";
                 poseLandmarker = await vision.PoseLandmarker.createFromOptions(files, options);
               }
+              window.__livesensePoseLandmarker = poseLandmarker;
               setBadge(false, "SEARCHING FOR FACE + ARMS");
               requestAnimationFrame(trackBody);
             } catch (error) {
               setBadge(false, "TRACKING OVERLAY UNAVAILABLE");
             }
           };
-          if (active) {
+          const attachPreview = (stream) => {
+            previewStream = stream;
+            window.__livesensePreviewStream = stream;
+            preview.srcObject = stream;
+            preview.onplaying = () => {
+              syncOverlaySize();
+              state.style.display = "none";
+              initialiseTrackingOverlay();
+            };
+            if (preview.readyState >= 2) preview.onplaying();
+          };
+          const streamIsLive = previewStream && previewStream.getVideoTracks().some(
+            (track) => track.readyState === "live"
+          );
+          if (active && streamIsLive) {
+            attachPreview(previewStream);
+          } else if (active) {
             state.textContent = "Starting camera...";
             navigator.mediaDevices.getUserMedia({
               video: {
@@ -324,27 +356,19 @@ def _render_local_camera_preview(active: bool) -> None:
                 frameRate: { ideal: 24, max: 24 }, facingMode: "user"
               },
               audio: false
-            }).then((stream) => {
-              previewStream = stream;
-              preview.srcObject = stream;
-              preview.onplaying = () => {
-                syncOverlaySize();
-                state.style.display = "none";
-                initialiseTrackingOverlay();
-              };
-            }).catch((error) => {
+            }).then(attachPreview).catch((error) => {
               state.textContent = `Camera unavailable: ${error.message}`;
             });
+          } else {
+            stopPreview();
           }
-          window.addEventListener("pagehide", stopPreview, { once: true });
           window.addEventListener("beforeunload", stopPreview, { once: true });
           window.addEventListener("resize", syncOverlaySize);
         </script>
         """
-    components.html(
+    st.html(
         preview_html.replace("__LIVESENSE_ACTIVE__", "true" if active else "false"),
-        height=260,
-        scrolling=False,
+        unsafe_allow_javascript=True,
     )
 
 
@@ -1075,23 +1099,35 @@ def _render_sidebar() -> None:
 
 def _mount_hidden_analyzer(settings) -> None:
     """Mount analysis transport after the immediate local preview and dashboard UI."""
+    holder = st.session_state.setdefault("processor_holder", {"instance": None})
+
+    def processor_factory() -> CameraProcessor:
+        processor = holder.get("instance")
+        if not isinstance(processor, CameraProcessor):
+            processor = CameraProcessor(
+                mirrored=settings.camera.mirrored,
+                show_fps=settings.camera.show_fps,
+                privacy_blur=False,
+                dozing_seconds=settings.monitoring.dozing_seconds,
+                sleeping_seconds=settings.monitoring.sleeping_seconds,
+            )
+            holder["instance"] = processor
+        return processor
+
+    analysis_width = min(settings.camera.width, 480)
+    analysis_height = max(1, round(settings.camera.height * analysis_width / settings.camera.width))
+    analysis_fps = min(settings.camera.target_fps, 15)
     context = webrtc_streamer(
         key="livesense-camera",
         mode=WebRtcMode.SENDONLY,
         desired_playing_state=st.session_state.camera_requested,
-        video_processor_factory=lambda: CameraProcessor(
-            mirrored=settings.camera.mirrored,
-            show_fps=settings.camera.show_fps,
-            privacy_blur=False,
-            dozing_seconds=settings.monitoring.dozing_seconds,
-            sleeping_seconds=settings.monitoring.sleeping_seconds,
-        ),
+        video_processor_factory=processor_factory,
         audio_processor_factory=None,
         media_stream_constraints={
             "video": {
-                "width": {"ideal": settings.camera.width},
-                "height": {"ideal": settings.camera.height},
-                "frameRate": {"ideal": settings.camera.target_fps},
+                "width": {"ideal": analysis_width},
+                "height": {"ideal": analysis_height},
+                "frameRate": {"ideal": analysis_fps, "max": analysis_fps},
             },
             "audio": False,
         },
