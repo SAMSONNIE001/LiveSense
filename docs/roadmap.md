@@ -12,19 +12,28 @@
 
 ## Milestone 1.5 — Live monitoring dashboard
 
-- [x] Reference-aligned driver monitoring interface
+- [x] Reference-aligned human monitoring interface
 - [x] OpenCV face and eye visibility detection
 - [x] Live visual signal scores and activity state
 - [x] Session events and rolling trend charts
 - [x] Calibration and session controls
 
-## Milestone 2 — Visual landmarks
+## Milestone 2 — Sleep, dozing, and cough analysis
 
-- [ ] MediaPipe face landmark pipeline
-- [ ] Face mesh landmarks
+- [x] Bundled MediaPipe face landmark pipeline
+- [x] Persistent eye-closure sleep state machine
+- [x] Yawn and head-angle drowsiness cues
+- [x] Suspected cough audio-burst analysis
+- [x] Critical visual, audible, and browser notification alarm
+- [x] Configurable dozing and sleeping thresholds
+
+## Milestone 3 — Pose and validation
+
 - [ ] Pose landmarks
 - [ ] Configurable landmark overlay
-- [ ] Performance benchmarks
+- [ ] Calibrated drowsiness benchmark dataset
+- [ ] Validated cough-classification model
+- [ ] False-positive and performance benchmarks
 
 ## Later milestones
 

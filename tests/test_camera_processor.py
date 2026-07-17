@@ -9,7 +9,7 @@ from camera import CameraProcessor
 def test_camera_processor_mirrors_frames() -> None:
     image = np.array([[[1, 2, 3], [4, 5, 6]]], dtype=np.uint8)
     frame = av.VideoFrame.from_ndarray(image, format="bgr24")
-    processor = CameraProcessor(mirrored=True, show_fps=False)
+    processor = CameraProcessor(mirrored=True, show_fps=False, enable_landmarks=False)
 
     result = processor.recv(frame).to_ndarray(format="bgr24")
 
@@ -19,7 +19,7 @@ def test_camera_processor_mirrors_frames() -> None:
 def test_camera_processor_can_disable_mirroring() -> None:
     image = np.array([[[1, 2, 3], [4, 5, 6]]], dtype=np.uint8)
     frame = av.VideoFrame.from_ndarray(image, format="bgr24")
-    processor = CameraProcessor(mirrored=True, show_fps=False)
+    processor = CameraProcessor(mirrored=True, show_fps=False, enable_landmarks=False)
     processor.configure(mirrored=False, show_fps=False)
 
     result = processor.recv(frame).to_ndarray(format="bgr24")
@@ -30,7 +30,7 @@ def test_camera_processor_can_disable_mirroring() -> None:
 def test_camera_processor_publishes_bounded_live_signals() -> None:
     image = np.full((120, 160, 3), 128, dtype=np.uint8)
     frame = av.VideoFrame.from_ndarray(image, format="bgr24")
-    processor = CameraProcessor(mirrored=False, show_fps=False)
+    processor = CameraProcessor(mirrored=False, show_fps=False, enable_landmarks=False)
 
     processor.recv(frame)
     current = processor.session.snapshot().current

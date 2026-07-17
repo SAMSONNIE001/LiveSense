@@ -22,6 +22,16 @@ class SignalSnapshot:
     fps: float
     brightness: float
     calibration_remaining: float = 0.0
+    sleep_state: str = "No face"
+    eyes_closed: bool = False
+    eye_closure_seconds: float = 0.0
+    drowsiness: float = 0.0
+    head_pitch: float = 0.0
+    yawning: bool = False
+    cough_detected: bool = False
+    cough_count: int = 0
+    audio_level: float = 0.0
+    alarm_active: bool = False
 
     @classmethod
     def waiting(cls) -> SignalSnapshot:

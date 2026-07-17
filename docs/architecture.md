@@ -5,31 +5,38 @@ computer-vision models, signal extraction, and presentation can evolve without
 becoming tightly coupled.
 
 ```text
-Browser camera
-      |
-      v
-camera/processor.py       WebRTC frames, face/eye detection, motion, overlays
-      |
-      v
-vision/                   Face and pose landmarks (Milestone 2)
-      |
-      v
-signals/ -> analytics/    Human signals and temporal interpretation
-      |
-      v
-events/ -> reports/       Domain events and exportable summaries
-      |
-      v
-dashboard/                Streamlit presentation and controls
+Browser camera ------------------- Browser microphone
+      |                                      |
+      v                                      v
+MediaPipe Face Landmarker            Audio burst detector
+      |                                      |
+      +---- eye/yawn/head cues    suspected cough cue ----+
+                             |                             |
+                             v                             |
+                    Drowsiness state machine <-------------+
+                             |
+                             v
+                 Session history and critical events
+                             |
+                             v
+                    Streamlit dashboard + alarms
 ```
 
 ## Design decisions
 
 - **Browser-owned camera:** `streamlit-webrtc` captures the user's webcam in the
   browser, making local development and remote deployment behave consistently.
-- **Frame processor boundary:** `CameraProcessor` is the single real-time entry
-  point. It publishes immutable signal snapshots to a thread-safe session store,
-  and later landmark pipelines can be composed here without leaking UI code.
+- **MediaPipe landmarks:** the bundled Face Landmarker model produces eye blink,
+  mouth/yawn, face geometry, and head-angle cues. Inference runs inside the video
+  processor and falls back to OpenCV face/eye detection if model creation fails.
+- **Duration-based sleep:** `DrowsinessMonitor` requires persistent cues before
+  escalating from awake to dozing and sleeping. A single closed-eye frame cannot
+  activate the critical alarm.
+- **Separate audio heuristic:** microphone frames feed `AudioActivityDetector`.
+  Only short, energetic, broadband bursts increment the suspected cough count;
+  continuous sound is rejected by duration rules.
+- **Frame processor boundary:** `CameraProcessor` combines current visual and
+  audio cues and publishes immutable snapshots to a thread-safe session store.
 - **Live session model:** `SignalSession` debounces activity events and samples
   rolling history so Streamlit can refresh metrics without blocking video frames.
 - **Typed YAML settings:** configuration is operator-friendly while dataclasses
@@ -38,9 +45,9 @@ dashboard/                Streamlit presentation and controls
 - **Small domain packages:** future signal, analytics, event, and reporting work
   has an intentional home instead of accumulating in the Streamlit entry point.
 
-## Extension point for Milestone 2
+## Alarm path
 
-The next pipeline should expose a model-independent `LandmarkResult`, keep model
-initialization outside the per-frame loop, and add overlays after inference. The
-camera processor should orchestrate these components rather than implement model
-details itself.
+When sustained cues reach `Sleeping`, the snapshot sets `alarm_active`. The
+session emits a critical event, the camera receives a red wake-up overlay, and
+the dashboard emits a visual alarm plus debounced Web Audio and browser
+notification signals. Notifications still require explicit browser permission.

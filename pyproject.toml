@@ -14,8 +14,9 @@ authors = [
 ]
 dependencies = [
   "av>=12,<17",
+  "mediapipe>=0.10.35,<1",
   "numpy>=1.26,<3",
-  "opencv-python-headless>=4.9,<5",
+  "opencv-contrib-python>=5,<6",
   "PyYAML>=6,<7",
   "streamlit>=1.36,<2",
   "streamlit-webrtc>=0.47,<1",

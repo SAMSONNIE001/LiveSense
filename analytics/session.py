@@ -30,6 +30,8 @@ class SignalSession:
         self._last_sample_at = 0.0
         self._last_event_at = 0.0
         self._last_activity = self._current.activity
+        self._last_sleep_state = self._current.sleep_state
+        self._last_cough_count = 0
 
     def update(self, snapshot: SignalSnapshot) -> None:
         """Store a signal result and emit debounced activity events."""
@@ -38,6 +40,42 @@ class SignalSession:
             if snapshot.timestamp - self._last_sample_at >= self._sample_interval:
                 self._history.append(snapshot)
                 self._last_sample_at = snapshot.timestamp
+
+            if snapshot.alarm_active and self._last_sleep_state != "Sleeping":
+                self._events.appendleft(
+                    SignalEvent(
+                        snapshot.timestamp,
+                        "critical",
+                        "Sleep alarm",
+                        "Sustained eye closure indicates possible sleep. "
+                        "Wake the person immediately.",
+                    )
+                )
+                self._last_event_at = snapshot.timestamp
+            elif (
+                snapshot.sleep_state in {"Dozing", "Drowsy"}
+                and snapshot.sleep_state != self._last_sleep_state
+            ):
+                self._events.appendleft(
+                    SignalEvent(
+                        snapshot.timestamp,
+                        "warning",
+                        f"{snapshot.sleep_state} detected",
+                        "Eye, yawn, or head-position cues indicate increasing drowsiness.",
+                    )
+                )
+                self._last_event_at = snapshot.timestamp
+
+            if snapshot.cough_count > self._last_cough_count:
+                self._events.appendleft(
+                    SignalEvent(
+                        snapshot.timestamp,
+                        "info",
+                        "Suspected cough",
+                        "A short broadband audio burst matched the cough heuristic.",
+                    )
+                )
+                self._last_event_at = snapshot.timestamp
 
             changed = snapshot.activity != self._last_activity
             can_emit = snapshot.timestamp - self._last_event_at >= 5.0
@@ -53,6 +91,8 @@ class SignalSession:
                 )
                 self._last_event_at = snapshot.timestamp
             self._last_activity = snapshot.activity
+            self._last_sleep_state = snapshot.sleep_state
+            self._last_cough_count = snapshot.cough_count
 
     def snapshot(self) -> SessionView:
         """Return a consistent view for the Streamlit rendering thread."""
@@ -68,3 +108,5 @@ class SignalSession:
             self._last_sample_at = 0.0
             self._last_event_at = 0.0
             self._last_activity = self._current.activity
+            self._last_sleep_state = self._current.sleep_state
+            self._last_cough_count = 0

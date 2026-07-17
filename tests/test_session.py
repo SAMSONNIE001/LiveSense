@@ -33,3 +33,36 @@ def test_session_reset_clears_history_and_events() -> None:
     assert view.current.activity == "Waiting for camera"
     assert view.history == ()
     assert view.events == ()
+
+
+def test_session_emits_critical_sleep_alarm() -> None:
+    session = SignalSession()
+    session.update(
+        replace(
+            SignalSnapshot.waiting(),
+            timestamp=20.0,
+            activity="Sleeping",
+            sleep_state="Sleeping",
+            alarm_active=True,
+        )
+    )
+
+    event = session.snapshot().events[0]
+
+    assert event.level == "critical"
+    assert event.title == "Sleep alarm"
+
+
+def test_session_records_new_cough_count() -> None:
+    session = SignalSession()
+    session.update(
+        replace(
+            SignalSnapshot.waiting(),
+            timestamp=20.0,
+            activity="Coughing",
+            cough_detected=True,
+            cough_count=1,
+        )
+    )
+
+    assert session.snapshot().events[0].title == "Suspected cough"

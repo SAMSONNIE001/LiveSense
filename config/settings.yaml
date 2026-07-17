@@ -12,3 +12,7 @@ camera:
 
 privacy:
   persist_frames: false
+
+monitoring:
+  dozing_seconds: 1.1
+  sleeping_seconds: 3.0
