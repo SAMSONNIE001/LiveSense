@@ -5,10 +5,10 @@ computer-vision models, signal extraction, and presentation can evolve without
 becoming tightly coupled.
 
 ```text
-Browser camera
+Browser camera -----> Direct local preview (no Python return trip)
       |
       v
-Reduced inference frame
+One-way WebRTC analyzer -----> Reduced inference frame
       |
       +---- MediaPipe Face Landmarker ---- eye/yawn/head cues
       |
@@ -28,6 +28,9 @@ Reduced inference frame
 
 - **Browser-owned camera:** `streamlit-webrtc` captures the user's webcam in the
   browser, making local development and remote deployment behave consistently.
+- **Direct preview:** a browser-local video element displays the camera immediately.
+  A separate hidden one-way WebRTC stream feeds Python analysis, so inference and
+  network timing cannot delay the picture the user sees.
 - **MediaPipe landmarks:** the bundled Face Landmarker model produces eye blink,
   mouth/yawn, face geometry, and head-angle cues. Inference runs inside the video
   processor and falls back to OpenCV face/eye detection if model creation fails.

@@ -161,6 +161,10 @@ THEME_CSS = """
   }
   video { border-radius: .18rem !important; background: #17201e; }
   [data-testid="stCustomComponentV1"] { border: 0; }
+  iframe[title="streamlit_webrtc.component.webrtc_streamer"] {
+    position: absolute; width: 1px !important; height: 1px !important;
+    opacity: 0; pointer-events: none;
+  }
 
   .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem; }
   .metric-box { padding: .55rem .58rem; border: 1px solid #edf1ef; border-radius: .25rem; }

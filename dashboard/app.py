@@ -7,6 +7,7 @@ from html import escape
 from textwrap import dedent
 
 import streamlit as st
+import streamlit.components.v1 as components
 from streamlit_webrtc import WebRtcMode, webrtc_streamer
 
 from camera import CameraProcessor
@@ -112,6 +113,62 @@ def _render_notification_permission() -> None:
         </script>
         """,
         unsafe_allow_javascript=True,
+    )
+
+
+def _render_local_camera_preview(active: bool) -> None:
+    """Render the webcam directly in the browser without a Python round trip."""
+    preview_html = """
+        <div id="livesense-preview-shell">
+          <video id="livesense-preview" autoplay muted playsinline></video>
+          <div id="livesense-preview-state">Start camera for live monitoring</div>
+        </div>
+        <style>
+          #livesense-preview-shell {
+            position: relative; width: 100%; overflow: hidden;
+            border-radius: 4px; background: #17201e; aspect-ratio: 16 / 9;
+          }
+          #livesense-preview {
+            display: block; width: 100%; height: 100%; object-fit: cover;
+            transform: scaleX(-1);
+          }
+          #livesense-preview-state {
+            position: absolute; inset: 0; display: grid; place-items: center;
+            color: white; background: #17201e; font: 12px "Segoe UI", sans-serif;
+          }
+        </style>
+        <script>
+          const preview = document.getElementById("livesense-preview");
+          const state = document.getElementById("livesense-preview-state");
+          const active = __LIVESENSE_ACTIVE__;
+          let previewStream = null;
+          const stopPreview = () => {
+            if (previewStream) previewStream.getTracks().forEach((track) => track.stop());
+          };
+          if (active) {
+            state.textContent = "Starting camera...";
+            navigator.mediaDevices.getUserMedia({
+              video: {
+                width: { ideal: 640 }, height: { ideal: 360 },
+                frameRate: { ideal: 24, max: 24 }, facingMode: "user"
+              },
+              audio: false
+            }).then((stream) => {
+              previewStream = stream;
+              preview.srcObject = stream;
+              preview.onplaying = () => { state.style.display = "none"; };
+            }).catch((error) => {
+              state.textContent = `Camera unavailable: ${error.message}`;
+            });
+          }
+          window.addEventListener("pagehide", stopPreview, { once: true });
+          window.addEventListener("beforeunload", stopPreview, { once: true });
+        </script>
+        """
+    components.html(
+        preview_html.replace("__LIVESENSE_ACTIVE__", "true" if active else "false"),
+        height=260,
+        scrolling=False,
     )
 
 
@@ -407,11 +464,6 @@ def _render_sidebar() -> None:
         index=2,
         label_visibility="visible",
     )
-    st.toggle(
-        "Privacy blur",
-        key="privacy_blur",
-        help="Blur the detected face after live signals are calculated.",
-    )
     st.markdown('<div class="side-section">ALARMS</div>', unsafe_allow_html=True)
     _render_notification_permission()
 
@@ -438,15 +490,12 @@ def render_dashboard() -> None:
         "calibration_requested": False,
         "reset_requested": False,
         "latest_feedback": "None",
-        "privacy_blur": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
     with st.sidebar:
         _render_sidebar()
-
-    privacy_blur = bool(st.session_state.get("privacy_blur", False))
 
     st.markdown(
         '<div class="topbar"><span class="user-chip">↑ &nbsp; '
@@ -463,14 +512,15 @@ def render_dashboard() -> None:
                 '<span class="live-label"><span class="live-dot"></span>Live</span></div>',
                 unsafe_allow_html=True,
             )
+            _render_local_camera_preview(st.session_state.camera_requested)
             context = webrtc_streamer(
                 key="livesense-camera",
-                mode=WebRtcMode.SENDRECV,
+                mode=WebRtcMode.SENDONLY,
                 desired_playing_state=st.session_state.camera_requested,
                 video_processor_factory=lambda: CameraProcessor(
                     mirrored=settings.camera.mirrored,
                     show_fps=settings.camera.show_fps,
-                    privacy_blur=privacy_blur,
+                    privacy_blur=False,
                     dozing_seconds=settings.monitoring.dozing_seconds,
                     sleeping_seconds=settings.monitoring.sleeping_seconds,
                 ),
@@ -485,6 +535,7 @@ def render_dashboard() -> None:
                 },
                 video_html_attrs={"autoPlay": True, "controls": False, "muted": True},
                 media_toggle_controls=False,
+                video_receiver_size=1,
                 sendback_audio=False,
                 async_processing=True,
             )
@@ -494,7 +545,7 @@ def render_dashboard() -> None:
                 processor.configure(
                     mirrored=settings.camera.mirrored,
                     show_fps=settings.camera.show_fps,
-                    privacy_blur=privacy_blur,
+                    privacy_blur=False,
                 )
                 if st.session_state.calibration_requested:
                     processor.start_calibration(10.0)

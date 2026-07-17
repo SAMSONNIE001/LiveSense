@@ -13,9 +13,9 @@ attention, movement, and hand-at-ear phone-use signals.
 - Duration-based `Awake`, `Drowsy`, `Dozing`, and `Sleeping` state machine
 - MediaPipe hand landmarks for phone-at-ear warnings
 - Critical sleep event with a red pull-over warning, audible alarm, and notification
-- Clear camera output with detected conditions shown in the top warning banner
+- Zero-round-trip browser preview with conditions shown in the top warning banner
 - Rolling drowsiness, attention, and phone-use trends
-- Camera, privacy blur, calibration, feedback, and session controls
+- Camera, calibration, feedback, and session controls
 - Configurable video and dashboard settings
 - Bundled official MediaPipe face and hand landmarker models for offline runtime use
 - Automated unit tests
