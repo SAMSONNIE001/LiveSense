@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 
 from analytics import SignalSession
-from signals import DrowsinessMonitor, SignalSnapshot, StableObservation
+from signals import DrowsinessMonitor, DrowsinessResult, SignalSnapshot, StableObservation
 from utils.fps import FPSMeter
 from vision import (
     FaceLandmarkAnalyzer,
@@ -39,11 +39,12 @@ def classify_distracted_activity(
 ) -> tuple[bool, bool, bool]:
     """Return raw phone, drinking and eating evidence without cross-classifying them."""
     phone = hand_near_ear or phone_object_score >= 1
-    if phone:
-        return True, False, False
-    drinking = drink_object_score >= 1
-    eating = food_object_score >= 1 or (hand_near_mouth and mouth_open_score >= 0.22)
-    return False, drinking, eating
+    # Food and drink objects still need repeated positioned detections. Eating
+    # can also use a combined hand-at-mouth plus clear jaw-opening cue because
+    # the food itself is commonly hidden by the hand.
+    drinking = drink_object_score >= 2
+    eating = food_object_score >= 2 or (hand_near_mouth and mouth_open_score >= 0.26)
+    return phone, drinking, eating
 
 
 class CameraProcessor:
@@ -56,8 +57,8 @@ class CameraProcessor:
         privacy_blur: bool = False,
         enable_landmarks: bool = True,
         enable_phone_detection: bool = True,
-        dozing_seconds: float = 0.25,
-        sleeping_seconds: float = 0.70,
+        dozing_seconds: float = 1.0,
+        sleeping_seconds: float = 2.0,
     ) -> None:
         self._mirrored = mirrored
         self._show_fps = show_fps
@@ -98,6 +99,8 @@ class CameraProcessor:
         self._frame_number = 0
         self._last_face: tuple[int, int, int, int] | None = None
         self._last_landmarks: FaceLandmarkResult | None = None
+        self._landmarks_fresh = False
+        self._last_drowsiness = DrowsinessResult("No face", 0.0, 0.0, False, False)
         self._last_phone_result = HandPhoneResult()
         self._last_object_result = ObjectObservation()
         self._object_streaks = {"phone": 0, "drink": 0, "food": 0}
@@ -106,9 +109,11 @@ class CameraProcessor:
         # so the notice remains readable through brief object occlusions.
         self._phone_object = StableObservation(activate_seconds=0.0, clear_seconds=0.80)
         self._phone_hand = StableObservation(activate_seconds=0.0, clear_seconds=0.65)
-        self._drinking = StableObservation(activate_seconds=0.0, clear_seconds=0.75)
-        self._eating = StableObservation(activate_seconds=0.10, clear_seconds=0.75)
-        self._yawning = StableObservation(activate_seconds=0.0, clear_seconds=2.0)
+        self._drinking = StableObservation(activate_seconds=0.15, clear_seconds=0.75)
+        self._eating = StableObservation(activate_seconds=0.30, clear_seconds=0.75)
+        self._yawning = StableObservation(activate_seconds=0.50, clear_seconds=2.0)
+        self._one_hand = StableObservation(activate_seconds=0.0, clear_seconds=1.0)
+        self._seatbelt_seen = StableObservation(activate_seconds=0.7, clear_seconds=2.0)
         self._seatbelt_missing = StableObservation(activate_seconds=5.0, clear_seconds=2.0)
         self._face_missing = StableObservation(activate_seconds=2.0, clear_seconds=1.0)
         self._calibration_until = 0.0
@@ -131,15 +136,19 @@ class CameraProcessor:
     def reset_session(self) -> None:
         self.session.reset()
         self._drowsiness.reset()
+        self._last_drowsiness = DrowsinessResult("No face", 0.0, 0.0, False, False)
         self._last_phone_result = HandPhoneResult()
         self._last_object_result = ObjectObservation()
         self._object_streaks = {"phone": 0, "drink": 0, "food": 0}
+        self._last_seatbelt_visible = False
         for observation in (
             self._phone_object,
             self._phone_hand,
             self._drinking,
             self._eating,
             self._yawning,
+            self._one_hand,
+            self._seatbelt_seen,
             self._seatbelt_missing,
             self._face_missing,
         ):
@@ -205,7 +214,11 @@ class CameraProcessor:
             face = landmarks.bounding_box
             face_detected = True
             eyes_closed = landmarks.eyes_closed
-            yawning = self._yawning.update(landmarks.yawning, now)
+            yawning = (
+                self._yawning.update(landmarks.yawning, now)
+                if self._landmarks_fresh
+                else self._yawning.active
+            )
             head_pitch = landmarks.head_pitch
             head_yaw = landmarks.head_yaw
             eyes_detected = 0 if eyes_closed else 2
@@ -231,13 +244,6 @@ class CameraProcessor:
         attention, face_scale_score = self._attention_scores(
             face, gray.shape, eyes_detected, head_yaw
         )
-        drowsiness = self._drowsiness.update(
-            timestamp=now,
-            face_detected=landmarks is not None,
-            eyes_closed=eyes_closed,
-            yawning=yawning,
-            head_pitch=head_pitch,
-        )
         phone_result = self._detect_phone_use(image, face, now)
         self._detect_objects(image, face, phone_result.palm_positions, now)
         mouth_open_score = landmarks.mouth_open_score if landmarks is not None else 0.0
@@ -249,21 +255,44 @@ class CameraProcessor:
             drink_object_score=self._object_streaks["drink"],
             food_object_score=self._object_streaks["food"],
         )
-        phone_object_active = self._phone_object.update(
+        self._phone_object.update(
             phone_raw and self._object_streaks["phone"] >= 1,
             now,
         )
-        phone_hand_active = self._phone_hand.update(phone_raw and phone_result.hand_near_ear, now)
-        phone_at_ear = phone_object_active or phone_hand_active
+        self._phone_hand.update(phone_raw and phone_result.hand_near_ear, now)
+        # Hand-to-face movement is too ambiguous to label as confirmed phone
+        # use with this general-purpose model. Publish a neutral hand advisory.
+        phone_at_ear = False
+        one_hand_visible = self._one_hand.update(len(phone_result.palm_positions) == 1, now)
         drinking_detected = self._drinking.update(drinking_raw, now)
         eating_detected = self._eating.update(eating_raw, now)
-        if phone_at_ear:
-            self._drinking.reset()
-            self._eating.reset()
-            drinking_detected = False
-            eating_detected = False
-        if face is not None and self._frame_number % 6 == 1:
-            self._last_seatbelt_visible = seatbelt_visible(image, face)
+        if drinking_raw or eating_raw:
+            # Repeated food/drink evidence explains mouth opening; it must not
+            # be retained as a yawn or converted into a drowsiness warning.
+            self._yawning.reset()
+            self._drowsiness.suppress_yawn()
+            yawning = False
+            if self._last_drowsiness.state == "Drowsy" and not eyes_closed:
+                self._last_drowsiness = DrowsinessResult(
+                    "Awake", 0.0, 0.0, False, False
+                )
+        # Only fresh face inference may advance duration-based safety state.
+        # Reusing a cached closed-eye frame here previously turned blinks into
+        # two-second sleep alarms on low-FPS computers.
+        if self._landmarks_fresh or self._landmark_analyzer is None:
+            self._last_drowsiness = self._drowsiness.update(
+                timestamp=now,
+                face_detected=landmarks is not None,
+                eyes_closed=eyes_closed,
+                yawning=yawning,
+                head_pitch=head_pitch,
+            )
+        drowsiness = self._last_drowsiness
+        if face is not None and self._frame_number % 3 == 1:
+            belt_observed = seatbelt_visible(image, face)
+            self._last_seatbelt_visible = self._seatbelt_seen.update(belt_observed, now)
+        elif face is None:
+            self._last_seatbelt_visible = self._seatbelt_seen.update(False, now)
         seatbelt_warning = self._seatbelt_missing.update(
             face_detected and not self._last_seatbelt_visible,
             now,
@@ -288,9 +317,6 @@ class CameraProcessor:
         elif drowsiness.state in {"Dozing", "Drowsy"}:
             activity = drowsiness.state
             status = "Drowsiness Detected"
-        elif phone_at_ear:
-            activity = "Phone use"
-            status = "Phone Warning"
         elif drinking_detected:
             activity = "Drinking"
             status = "Drinking Warning"
@@ -340,7 +366,8 @@ class CameraProcessor:
             audio_level=0.0,
             alarm_active=drowsiness.alarm_active,
             phone_at_ear=phone_at_ear,
-            phone_side=phone_result.side if phone_at_ear else "",
+            phone_side="",
+            one_hand_visible=one_hand_visible,
             eating_detected=eating_detected,
             drinking_detected=drinking_detected,
             seatbelt_visible=self._last_seatbelt_visible,
@@ -353,9 +380,11 @@ class CameraProcessor:
         image: np.ndarray,
         now: float,
     ) -> FaceLandmarkResult | None:
+        self._landmarks_fresh = False
         if self._landmark_analyzer is None:
             return None
         if self._frame_number % 2 == 1:
+            self._landmarks_fresh = True
             try:
                 self._last_landmarks = self._landmark_analyzer.analyze(image, int(now * 1000))
             except (RuntimeError, ValueError):

@@ -32,7 +32,6 @@ class SignalSession:
         self._last_activity = self._current.activity
         self._last_sleep_state = self._current.sleep_state
         self._last_cough_count = 0
-        self._phone_active = False
         self._eating_active = False
         self._drinking_active = False
         self._seatbelt_warning = False
@@ -82,18 +81,6 @@ class SignalSession:
                 )
                 self._last_event_at = snapshot.timestamp
 
-            if snapshot.phone_at_ear and not self._phone_active:
-                self._events.appendleft(
-                    SignalEvent(
-                        snapshot.timestamp,
-                        "warning",
-                        "Phone use detected",
-                        "A phone or sustained hand-at-ear cue was observed. "
-                        "Put the phone down and stay attentive.",
-                    )
-                )
-                self._last_event_at = snapshot.timestamp
-
             observation_events = (
                 (
                     snapshot.drinking_detected and not self._drinking_active,
@@ -138,7 +125,6 @@ class SignalSession:
             self._last_activity = snapshot.activity
             self._last_sleep_state = snapshot.sleep_state
             self._last_cough_count = snapshot.cough_count
-            self._phone_active = snapshot.phone_at_ear
             self._eating_active = snapshot.eating_detected
             self._drinking_active = snapshot.drinking_detected
             self._seatbelt_warning = snapshot.seatbelt_warning
@@ -160,7 +146,6 @@ class SignalSession:
             self._last_activity = self._current.activity
             self._last_sleep_state = self._current.sleep_state
             self._last_cough_count = 0
-            self._phone_active = False
             self._eating_active = False
             self._drinking_active = False
             self._seatbelt_warning = False

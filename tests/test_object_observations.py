@@ -35,6 +35,16 @@ def test_drink_and_food_must_be_close_to_mouth() -> None:
     assert food.food_near_mouth is True
 
 
+def test_low_confidence_food_and_drink_are_rejected() -> None:
+    result = classify_object_cues(
+        [("cup", 0.12, (128, 110, 24, 32)), ("sandwich", 0.16, (125, 108, 32, 28))],
+        FACE,
+    )
+
+    assert result.drink_near_mouth is False
+    assert result.food_near_mouth is False
+
+
 def test_diagonal_torso_edge_can_confirm_seatbelt() -> None:
     image = np.zeros((360, 640, 3), dtype=np.uint8)
     face = (250, 40, 100, 100)
@@ -42,6 +52,14 @@ def test_diagonal_torso_edge_can_confirm_seatbelt() -> None:
 
     assert seatbelt_visible(image, face) is True
     assert seatbelt_visible(np.zeros_like(image), face) is False
+
+
+def test_isolated_thin_diagonal_is_not_enough_for_seatbelt() -> None:
+    image = np.zeros((360, 640, 3), dtype=np.uint8)
+    face = (250, 40, 100, 100)
+    cv2.line(image, (210, 145), (390, 300), (255, 255, 255), 1)
+
+    assert seatbelt_visible(image, face) is False
 
 
 def test_object_detector_model_loads() -> None:

@@ -16,7 +16,10 @@ let poseBusy = false;
 let lastPoseAt = 0;
 let lastVideoTime = -1;
 let alarmWasActive = false;
+let alarmAudioContext = null;
 let latest = null;
+let resetOnFirstConnect = true;
+let initialSignalsToSkip = 0;
 
 const colors = { green: "#20dda3", cyan: "#22bfe8", amber: "#f0a31c", red: "#ef4b4b", purple: "#a460df" };
 const metricDefinitions = [
@@ -43,12 +46,19 @@ function connect() {
   socket.binaryType = "arraybuffer";
   socket.onopen = () => {
     setConnection(true, "Analysis server connected");
+    if (resetOnFirstConnect) {
+      initialSignalsToSkip = 1;
+      resetOnFirstConnect = false;
+      socket.send(JSON.stringify({ action: "reset" }));
+    }
     if (cameraActive) scheduleFrame();
   };
   socket.onmessage = (event) => {
     framePending = false;
     const payload = JSON.parse(event.data);
-    if (payload.type === "signals") updateDashboard(payload);
+    if (payload.type === "signals" && initialSignalsToSkip > 0) {
+      initialSignalsToSkip -= 1;
+    } else if (payload.type === "signals") updateDashboard(payload);
     if (cameraActive) scheduleFrame();
   };
   socket.onerror = () => setConnection(false, "Analysis connection interrupted");
@@ -77,6 +87,7 @@ function sendFrame() {
 async function startCamera() {
   if (cameraActive) return stopCamera();
   try {
+    armAlarmAudio();
     stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 20, max: 24 }, facingMode: "user" }, audio: false });
     video.srcObject = stream;
     await video.play();
@@ -179,9 +190,9 @@ function updateDashboard(payload) {
     return `<div class="signal-card" style="color:${color}"><small>${label}</small><strong>${Math.round(value)}%</strong><em>${state}</em><div class="mini-line"><i style="width:${value}%"></i></div></div>`;
   });
   $("#signal-cards").innerHTML = cards.join("");
-  const activities = [["Face Detected",current.face_detected],["Eyes Closed",current.eyes_closed],["Looking Forward",current.attention>=48],["Phone Use",current.phone_at_ear],["Eating",current.eating_detected],["Drinking",current.drinking_detected],["Seat Belt",current.seatbelt_visible],["Yawning",current.yawning]];
+  const activities = [["Face Detected",current.face_detected],["Eyes Closed",current.eyes_closed],["Looking Forward",current.attention>=48],["One Hand Visible",current.one_hand_visible],["Eating",current.eating_detected],["Drinking",current.drinking_detected],["Seat Belt",current.seatbelt_visible],["Yawning",current.yawning]];
   $("#activity-list").innerHTML = activities.map(([name, active]) => `<div class="activity-row"><span>${name}</span><b class="${active?'yes':''}">${active?'Yes':'No'}</b></div>`).join("");
-  updateQuality(current); updateNotice(current); updateSeatbeltAdvice(current); updateEvents(payload.events); updateActivityRecord(current); updateSummary(current, payload.events); updateCharts(payload.history); alarm(current.alarm_active);
+  updateQuality(current); updateNotice(current); updateSeatbeltAdvice(current); updateHandAdvice(current); updateEvents(payload.events); updateActivityRecord(current); updateSummary(current, payload.events); updateCharts(payload.history); alarm(current.alarm_active);
   $("#nav-alerts").textContent = payload.events.filter((event) => event.level !== "info").length;
 }
 
@@ -200,9 +211,15 @@ function updateSeatbeltAdvice(c) {
   node.className = `seatbelt-advice ${state}`;
   node.innerHTML = `<span>◇</span><div><strong>SEAT-BELT SAFETY</strong><small>${detail}</small></div><b>${status}</b>`;
 }
+function updateHandAdvice(c) {
+  const node = $("#hand-advice");
+  const state = c.one_hand_visible ? "warning" : "safe";
+  const detail = c.one_hand_visible ? "Only one hand is visible. Keep both hands available for safe control." : "Keep both hands available for safe control.";
+  node.className = `seatbelt-advice ${state}`;
+  node.innerHTML = `<span>◇</span><div><strong>HANDS SAFETY</strong><small>${detail}</small></div><b>${c.one_hand_visible ? "Use both hands" : "Ready"}</b>`;
+}
 function updateNotice(c) {
   if (c.alarm_active) return showNotice("danger","DANGER: SLEEP DETECTED — PULL OVER NOW","Stop driving, move to a safe place, and rest before continuing.");
-  if (c.phone_at_ear) return showNotice("danger","PHONE USE DETECTED","Put the phone down and keep both hands available.");
   if (c.face_missing_warning) return showNotice("danger","FACE NOT DETECTED","Return your face to camera view.");
   if (c.drinking_detected) return showNotice("warning","DRINKING DETECTED","Keep your hands and attention available for driving.");
   if (c.eating_detected) return showNotice("warning","EATING DETECTED","Stop eating and restore full attention.");
@@ -216,7 +233,7 @@ function updateActivityRecord(c) {
     ["Sleep State", c.sleep_state, c.alarm_active ? "danger" : ["Dozing", "Drowsy"].includes(c.sleep_state) ? "warning" : c.sleep_state === "Awake" ? "active" : ""],
     ["Face Detected", c.face_detected ? "Visible" : "Not visible", c.face_detected ? "active" : "danger"],
     ["Eyes", c.eyes_closed ? `Closed ${c.eye_closure_seconds.toFixed(1)}s` : "Open", c.eyes_closed ? "warning" : "active"],
-    ["Phone Use", c.phone_at_ear ? "Detected" : "Clear", c.phone_at_ear ? "danger" : "active"],
+    ["Hands", c.one_hand_visible ? "One visible" : "Ready", c.one_hand_visible ? "warning" : "active"],
     ["Eating", c.eating_detected ? "Detected" : "Clear", c.eating_detected ? "warning" : "active"],
     ["Drinking", c.drinking_detected ? "Detected" : "Clear", c.drinking_detected ? "warning" : "active"],
     ["Seat Belt", c.seatbelt_warning ? "Not confirmed" : c.seatbelt_visible ? "Visible" : "Checking", c.seatbelt_warning ? "danger" : c.seatbelt_visible ? "active" : ""],
@@ -235,13 +252,14 @@ function drawChart(canvas, history, series) {
 }
 function updateCharts(history) { const drowsy=[["drowsiness",colors.amber,"Drowsiness"],["yawning",colors.red,"Yawning"],["sleeping",colors.purple,"Sleeping"]];drawChart($("#drowsy-chart"),history,drowsy);$("#drowsy-legend").innerHTML=drowsy.map(([,color,label])=>`<span><i style="background:${color}"></i>${label}</span>`).join(""); }
 
-function alarm(active) { if(active&&!alarmWasActive){if(Notification.permission==="granted")new Notification("LiveSense sleep alarm",{body:"Sleep detected. Pull over now."});const AudioContext=window.AudioContext||window.webkitAudioContext;if(AudioContext){const ctx=new AudioContext();[0,.3,.6].forEach((delay)=>{const osc=ctx.createOscillator(),gain=ctx.createGain();osc.frequency.value=880;gain.gain.value=.16;osc.connect(gain).connect(ctx.destination);osc.start(ctx.currentTime+delay);osc.stop(ctx.currentTime+delay+.2)})}}alarmWasActive=active; }
+function armAlarmAudio() { const AudioContext=window.AudioContext||window.webkitAudioContext;if(!AudioContext)return null;if(!alarmAudioContext)alarmAudioContext=new AudioContext();if(alarmAudioContext.state==="suspended")alarmAudioContext.resume();return alarmAudioContext; }
+function alarm(active) { if(active&&!alarmWasActive){if(Notification.permission==="granted")new Notification("LiveSense sleep alarm",{body:"Sleep detected. Pull over now."});const ctx=armAlarmAudio();if(ctx){[0,.3,.6].forEach((delay)=>{const osc=ctx.createOscillator(),gain=ctx.createGain();osc.frequency.value=880;gain.gain.value=.16;osc.connect(gain).connect(ctx.destination);osc.start(ctx.currentTime+delay);osc.stop(ctx.currentTime+delay+.2)})}}alarmWasActive=active; }
 function formatDuration(total){const h=String(Math.floor(total/3600)).padStart(2,"0"),m=String(Math.floor(total%3600/60)).padStart(2,"0"),s=String(total%60).padStart(2,"0");return `${h}:${m}:${s}`;}
 
 $("#camera-button").onclick=startCamera; $("#mini-stop").onclick=stopCamera;
 $("#calibrate-button").onclick=()=>socket?.readyState===WebSocket.OPEN&&socket.send(JSON.stringify({action:"calibrate"}));
 $("#reset-button").onclick=()=>socket?.readyState===WebSocket.OPEN&&socket.send(JSON.stringify({action:"reset"}));
-$("#notifications-button").onclick=async()=>{if("Notification" in window)await Notification.requestPermission();};
+$("#notifications-button").onclick=async()=>{armAlarmAudio();if("Notification" in window)await Notification.requestPermission();};
 $("#snapshot-button").onclick=()=>{if(!cameraActive)return;const link=document.createElement("a");captureContext.drawImage(video,0,0,capture.width,capture.height);link.href=capture.toDataURL("image/jpeg",.9);link.download="livesense-snapshot.jpg";link.click();};
 window.addEventListener("beforeunload",()=>{if(stream)stream.getTracks().forEach((track)=>track.stop());socket?.close();poseLandmarker?.close();});
 setInterval(()=>{const now=new Date();$("#date").textContent=now.toLocaleDateString([], {month:"short",day:"2-digit",year:"numeric"});$("#time").textContent=now.toLocaleTimeString();$("#uptime").textContent=formatDuration(Math.floor((Date.now()-startedAt)/1000));},1000);

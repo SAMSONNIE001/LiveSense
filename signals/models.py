@@ -34,6 +34,7 @@ class SignalSnapshot:
     alarm_active: bool = False
     phone_at_ear: bool = False
     phone_side: str = ""
+    one_hand_visible: bool = False
     eating_detected: bool = False
     drinking_detected: bool = False
     seatbelt_visible: bool = False

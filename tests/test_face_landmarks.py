@@ -11,13 +11,15 @@ from vision.face_landmarks import (
 
 def test_eye_closure_combines_blink_and_eyelid_geometry() -> None:
     assert eyes_appear_closed(0.16, 0.17, 0.10, 0.10) is True
+    assert eyes_appear_closed(0.20, 0.20, 0.10, 0.10) is True
+    assert eyes_appear_closed(0.23, 0.23, 0.10, 0.10) is False
     assert eyes_appear_closed(0.27, 0.28, 0.70, 0.68) is True
     assert eyes_appear_closed(0.27, 0.28, 0.10, 0.12) is False
 
 
 def test_yawn_threshold_catches_moderate_sustained_jaw_opening() -> None:
-    assert mouth_appears_yawning(0.38) is True
-    assert mouth_appears_yawning(0.30) is False
+    assert mouth_appears_yawning(0.42) is True
+    assert mouth_appears_yawning(0.35) is False
 
 
 def test_bundled_face_landmarker_loads_and_handles_empty_frame() -> None:

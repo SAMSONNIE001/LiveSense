@@ -16,8 +16,8 @@ def test_default_settings_load() -> None:
     assert settings.camera.target_fps == 24
     assert settings.camera.mirrored is True
     assert settings.privacy.persist_frames is False
-    assert settings.monitoring.dozing_seconds == 0.25
-    assert settings.monitoring.sleeping_seconds == 0.70
+    assert settings.monitoring.dozing_seconds == 1.0
+    assert settings.monitoring.sleeping_seconds == 2.0
 
 
 def test_invalid_camera_dimensions_are_rejected(tmp_path: Path) -> None:

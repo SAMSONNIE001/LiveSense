@@ -72,13 +72,15 @@ def eyes_appear_closed(
     """Combine eyelid shape and blendshapes so dim lighting does not hide closure."""
     average_ear = (left_ear + right_ear) / 2.0
     average_blink = (left_blink + right_blink) / 2.0
-    both_blinks = left_blink >= 0.34 and right_blink >= 0.34
-    return both_blinks or average_blink >= 0.42 or average_ear < 0.21
+    both_blinks = left_blink >= 0.38 and right_blink >= 0.38
+    both_lids_closed = left_ear < 0.205 and right_ear < 0.205
+    shape_and_blink_agree = average_ear < 0.225 and average_blink >= 0.28
+    return both_blinks or both_lids_closed or shape_and_blink_agree
 
 
 def mouth_appears_yawning(mouth_open_score: float) -> bool:
     """Return whether jaw opening is large enough to represent a likely yawn."""
-    return mouth_open_score >= 0.38
+    return mouth_open_score >= 0.42
 
 
 class FaceLandmarkAnalyzer:

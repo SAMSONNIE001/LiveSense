@@ -19,12 +19,13 @@ class DrowsinessMonitor:
 
     def __init__(
         self,
-        dozing_seconds: float = 0.25,
-        sleeping_seconds: float = 0.70,
+        dozing_seconds: float = 1.0,
+        sleeping_seconds: float = 2.0,
     ) -> None:
         self.dozing_seconds = dozing_seconds
         self.sleeping_seconds = sleeping_seconds
-        self._last_at: float | None = None
+        self._closed_since: float | None = None
+        self._open_since: float | None = None
         self._closure_seconds = 0.0
         self._yawn_until = 0.0
         self._yawn_was_active = False
@@ -38,21 +39,26 @@ class DrowsinessMonitor:
         yawning: bool,
         head_pitch: float,
     ) -> DrowsinessResult:
-        if self._last_at is None:
-            elapsed = 0.0
-        else:
-            elapsed = max(0.0, min(0.25, timestamp - self._last_at))
-        self._last_at = timestamp
-
         if not face_detected:
-            self._closure_seconds = max(0.0, self._closure_seconds - elapsed * 2.0)
+            self._closed_since = None
+            self._open_since = None
+            self._closure_seconds = 0.0
             self._yawn_was_active = False
             return DrowsinessResult("No face", 0.0, self._closure_seconds, False, False)
 
         if eyes_closed:
-            self._closure_seconds += elapsed
+            if self._closed_since is None:
+                self._closed_since = timestamp
+            self._open_since = None
+            self._closure_seconds = max(0.0, timestamp - self._closed_since)
         else:
-            self._closure_seconds = max(0.0, self._closure_seconds - elapsed * 3.0)
+            if self._open_since is None:
+                self._open_since = timestamp
+            # One brief open/missed landmark sample must not erase a genuine
+            # two-second closure. Sustained open eyes still reset promptly.
+            if timestamp - self._open_since >= 0.75:
+                self._closed_since = None
+                self._closure_seconds = 0.0
 
         if yawning and not self._yawn_was_active:
             self._yawn_until = timestamp + 8.0
@@ -66,12 +72,7 @@ class DrowsinessMonitor:
             closure_score + (18.0 if recent_yawn else 0.0) + (12.0 if head_drop else 0.0),
         )
 
-        # LiveSense is intentionally configured as a high-sensitivity safety
-        # monitor: one reliable closed-eye landmark result raises the alarm.
-        # This also avoids extra wall-clock delay on lower-FPS computers.
-        sleeping = eyes_closed
-        if sleeping:
-            score = 100.0
+        sleeping = eyes_closed and self._closure_seconds >= self.sleeping_seconds
         dozing = self._closure_seconds >= self.dozing_seconds or score >= 45.0
         if sleeping:
             state = "Sleeping"
@@ -83,8 +84,14 @@ class DrowsinessMonitor:
             state = "Awake"
         return DrowsinessResult(state, score, self._closure_seconds, head_drop, sleeping)
 
+    def suppress_yawn(self) -> None:
+        """Discard a mouth-opening cue explained by eating or drinking."""
+        self._yawn_until = 0.0
+        self._yawn_was_active = False
+
     def reset(self) -> None:
-        self._last_at = None
+        self._closed_since = None
+        self._open_since = None
         self._closure_seconds = 0.0
         self._yawn_until = 0.0
         self._yawn_was_active = False
